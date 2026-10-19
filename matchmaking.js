@@ -1,4 +1,4 @@
-/* RallyRank V1.04 — balanced teams and score-margin-adjusted MMR. */
+/* RallyRank V1.06 — mixed or skill-split courts, score-margin-adjusted MMR. */
 (function(root){
   'use strict';
   const TEAM_COUNT=6;
@@ -30,10 +30,19 @@
     const avgs=teams.map(teamAverage);
     return Math.round(Math.max(...avgs)-Math.min(...avgs));
   }
-  function score(teams,priorPairs,teamSize){
+  // The first three teams play on Court 1; the last three play on Court 2.
+  // In mixed mode, every court receives advanced players where possible.
+  // In split mode, the stronger half goes to Court 1, weaker half to Court 2.
+  function score(teams,priorPairs,teamSize,mode){
     const avgs=teams.map(teamAverage);
-    const target=avgs.reduce((sum,n)=>sum+n,0)/TEAM_COUNT;
-    const range=Math.max(...avgs)-Math.min(...avgs);
+    const blocks=mode==='split'?[[0,1,2],[3,4,5]]:[[0,1,2,3,4,5]];
+    let ratingCost=0;
+    for(const block of blocks){
+      const subset=block.map(i=>avgs[i]);
+      const target=subset.reduce((sum,n)=>sum+n,0)/subset.length;
+      const range=Math.max(...subset)-Math.min(...subset);
+      ratingCost+=(subset.reduce((sum,n)=>sum+(n-target)**2,0)+range*range*.6)*teamSize**2;
+    }
     let repeats=0;
     for(const team of teams){
       const actual=realPlayers(team);
@@ -41,12 +50,20 @@
         if(priorPairs.has(pairKey(actual[i].id,actual[j].id))) repeats++;
       }
     }
-    // Equalize the *registered* players' average MMR. Sub slots have no rating.
-    // The teamSize multiplier maintains the original scoring scale for full teams.
-    return (avgs.reduce((s,v)=>s+(v-target)**2,0)+range*range*.6)*teamSize**2+repeats*1800;
+    if(mode==='mixed'){
+      // 'Advanced' initially starts at 1500. Rating >= 1400 makes distribution
+      // resilient as those players' ratings evolve. Only admins see ratings.
+      const advanced=teams.map(team=>realPlayers(team).filter(p=>Number(p.mmr)>=1400).length);
+      const avgAdvanced=advanced.reduce((a,b)=>a+b,0)/TEAM_COUNT;
+      const unevenTeams=advanced.reduce((n,c)=>n+(c-avgAdvanced)**2,0);
+      const courtDifference=Math.abs(advanced.slice(0,3).reduce((a,b)=>a+b,0)-advanced.slice(3).reduce((a,b)=>a+b,0));
+      ratingCost+=unevenTeams*110000+courtDifference*courtDifference*170000;
+    }
+    return ratingCost+repeats*1800;
   }
-  function makeTeams(players,teamSize,previousTeams=[]){
+  function makeTeams(players,teamSize,previousTeams=[],mode='mixed'){
     if(!Number.isInteger(teamSize)||teamSize<2||teamSize>6)throw Error('Team size must be 2–6.');
+    if(!['mixed','split'].includes(mode))throw Error('Unknown court balancing mode.');
     const capacity=TEAM_COUNT*teamSize;
     if(players.length<TEAM_COUNT)throw Error('At least six real players are needed (one per team).');
     const selected=players.slice(0,capacity);
@@ -60,42 +77,51 @@
     }
     let best=null,bestScore=Infinity;
     for(let trial=0;trial<140;trial++){
-      const sorted=selected.map(p=>({p,sort:Number(p.mmr)+(Math.random()-.5)*(trial===0?0:110)}))
+      const sorted=selected.map(p=>({p,sort:Number(p.mmr)+(Math.random()-.5)*(mode==='split'||trial===0?0:110)}))
         .sort((a,b)=>b.sort-a.sort).map(x=>x.p);
       const teams=Array.from({length:TEAM_COUNT},()=>[]);
-      if(missing){
-        // Balance the number of sub slots across courts before balancing real skill.
-        const order=Array.from({length:TEAM_COUNT},(_,i)=>i);
-        for(let i=order.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
-        const count=Array(TEAM_COUNT).fill(Math.floor(missing/TEAM_COUNT));
-        for(let i=0;i<missing%TEAM_COUNT;i++)count[order[i]]++;
-        let slot=1;
-        count.forEach((n,ti)=>{for(let k=0;k<n;k++)teams[ti].push({id:`sub:${slot++}`,name:'Sub needed',is_placeholder:true});});
-        const capacities=count.map(n=>teamSize-n);
-        const picked=Array(TEAM_COUNT).fill(0);
-        // Snake-draft into the remaining real-player positions; nobody is left on an all-sub team.
-        const snake=Array.from({length:TEAM_COUNT},(_,i)=>i).concat(Array.from({length:TEAM_COUNT},(_,i)=>TEAM_COUNT-i-1));
+      // Spread unrated substitute spots across teams, keeping at least one
+      // registered participant on every team.
+      const shuffled=Array.from({length:TEAM_COUNT},(_,i)=>i);
+      for(let i=shuffled.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];}
+      const missingCounts=Array(TEAM_COUNT).fill(Math.floor(missing/TEAM_COUNT));
+      for(let i=0;i<missing%TEAM_COUNT;i++)missingCounts[shuffled[i]]++;
+      let slot=1;
+      missingCounts.forEach((n,ti)=>{for(let k=0;k<n;k++)teams[ti].push({id:`sub:${slot++}`,name:'Sub needed',is_placeholder:true});});
+      const capacities=missingCounts.map(n=>teamSize-n);
+      const picked=Array(TEAM_COUNT).fill(0);
+      function assign(incoming,order){
+        const snake=order.concat([...order].reverse());
         let cursor=trial%snake.length;
-        for(const player of sorted){
+        for(const player of incoming){
           let assigned=false;
           for(let attempt=0;attempt<snake.length;attempt++){
             const ti=snake[(cursor+attempt)%snake.length];
-            if(picked[ti]<capacities[ti]){teams[ti].push(player);picked[ti]++;cursor=(cursor+attempt+1)%snake.length;assigned=true;break;}
+            if(picked[ti]<capacities[ti]){
+              teams[ti].push(player);picked[ti]++;cursor=(cursor+attempt+1)%snake.length;assigned=true;break;
+            }
           }
           if(!assigned)throw Error('Could not assign all checked-in players.');
         }
-      }else{
-        sorted.forEach((p,i)=>{const wave=i%(TEAM_COUNT*2);teams[wave<TEAM_COUNT?wave:TEAM_COUNT*2-wave-1].push(p);});
       }
-      let current=score(teams,priorPairs,teamSize);
+      if(mode==='split'){
+        const court1Size=capacities.slice(0,3).reduce((a,b)=>a+b,0);
+        // Strongest players to Court 1; balance each half independently.
+        assign(sorted.slice(0,court1Size),[0,1,2]);
+        assign(sorted.slice(court1Size),[3,4,5]);
+      }else{
+        // Alternate between courts first to distribute advanced players.
+        assign(sorted,[0,3,1,4,2,5]);
+      }
+      let current=score(teams,priorPairs,teamSize,mode);
       for(let n=0;n<450;n++){
         const a=Math.floor(Math.random()*TEAM_COUNT),b=Math.floor(Math.random()*TEAM_COUNT);
-        if(a===b)continue;
+        if(a===b||(mode==='split'&&Math.floor(a/3)!==Math.floor(b/3)))continue;
         const aReal=teams[a].map((p,i)=>!isPlaceholder(p)?i:-1).filter(i=>i>=0);
         const bReal=teams[b].map((p,i)=>!isPlaceholder(p)?i:-1).filter(i=>i>=0);
         const ia=aReal[Math.floor(Math.random()*aReal.length)],ib=bReal[Math.floor(Math.random()*bReal.length)];
         [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
-        const next=score(teams,priorPairs,teamSize);
+        const next=score(teams,priorPairs,teamSize,mode);
         if(next<current){current=next;}
         else [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
       }
