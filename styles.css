@@ -564,3 +564,10 @@ body[data-active-tab="courts"] .hero{display:none}
 [data-theme="dark"] .admin-edit-profiles .profile-list-meta{background:#203248;border-color:#3d536b}
 [data-theme="dark"] .admin-edit-profiles .profile-count{color:#f0f6ff}
 @media(max-width:650px){.live-courts-actions{justify-content:stretch}.live-courts-actions .btn{flex:1}.admin-edit-profiles .profile-list-meta{align-items:stretch}.admin-edit-profiles .profile-show-all{width:100%}}
+
+/* V1.10: Secure-by-default navigation. Hidden admin controls must never be displayed by responsive CSS overrides. */
+.nav-tab[hidden], .demo-toggle[hidden], .demo-banner[hidden], .view[hidden] { display: none !important; }
+.ranking-mmr { display:inline-flex;align-items:center;font-size:.93rem;font-weight:800;white-space:nowrap;color:var(--ink,#17243b);background:var(--surface-alt,#eef2f8);padding:.3rem .65rem;border-radius:9px;margin-left:auto; }
+.ranking-record { white-space:nowrap; }
+.ranking-row { gap:10px; }
+@media(max-width:620px) {.ranking-row {flex-wrap:wrap;} .ranking-mmr { margin-left:0;} }

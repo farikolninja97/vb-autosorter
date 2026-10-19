@@ -2,8 +2,9 @@
   'use strict';
   const cfg=window.VB_CONFIG||{};
   const configured=Boolean(cfg.supabaseUrl && cfg.supabaseAnonKey);
-  // The sandbox is explicitly selectable even when real Supabase credentials are present.
-  let demo=!configured || new URLSearchParams(window.location.search).get('demo')==='1';
+  // Demo access requires a live, verified Supabase admin session. A query flag never grants access.
+  const requestedDemo=new URLSearchParams(window.location.search).get('demo')==='1';
+  let demo=false;
   const db=configured&&window.supabase?.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey) || null;
   const $=s=>document.querySelector(s);
   const safe=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
@@ -30,10 +31,10 @@
     applyTheme(next);
   });
   if(document.documentElement?.dataset)applyTheme(document.documentElement.dataset.theme);
-  let tab='signup',pub=null,admin=null,user=null,adminGranted=false,loading=false,mutating=false;
+  let tab='courts',pub=null,admin=null,user=null,adminGranted=false,loading=false,mutating=false;
   let lastError='',searchText='',lastFlashTimer=null,leaderboardPosition='All';
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
-  const APP_VERSION='1.09';
+  const APP_VERSION='1.10';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
@@ -43,17 +44,16 @@
   function storeDemo(){try{localStorage.setItem('rallyrank-demo-v107',JSON.stringify(demoData));}catch(e){}}
   function demoState(){const x=demoData;return {event:x.event?{...x.event,player_count:x.signups.length,capacity:x.event.team_size*6,completed_rounds:x.archives.length}:null,
     roster:x.signups.map(s=>{const p=x.players.find(p=>p.id===s.player_id);return {id:p.id,name:p.name,checked_at:s.checked_at,team_id:x.teams.find(t=>t.players.some(y=>y.id===p.id))?.id||null,rounds_played:x.archives.filter(a=>a.teams.some(t=>t.players.some(y=>y.id===p.id))).length};}),
-    teams:x.teams,matches:x.matches.map(({mmr_changes,...match})=>match),leaderboard:demoLeaderboard()};}
-  function demoLeaderboard(){return [...demoData.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name)).map(p=>({id:p.id,name:p.name,position:p.position||'Unspecified',wins:p.wins,losses:p.losses}));}
+    teams:x.teams,matches:x.matches.map(({mmr_changes,...match})=>match)};}
+  function demoLeaderboard(){return [...demoData.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name)).map(p=>({id:p.id,name:p.name,position:p.position||'Unspecified',wins:p.wins,losses:p.losses,mmr:p.mmr}));}
   function average(team){const registered=team.players.filter(p=>!p.is_placeholder).map(p=>demoData.players.find(x=>x.id===p.id));if(!registered.length)throw Error('Each team needs a registered player.');return registered.reduce((n,p)=>n+p.mmr,0)/registered.length;}
   function demoAction(fn){fn();storeDemo();return Promise.resolve(null);}
   const api={
-    async getPublic(){if(demo)return demoState();const [state,ranks]=await Promise.all([db.rpc('vmm_get_state'),db.rpc('vmm_get_leaderboard')]);if(state.error)throw state.error;if(ranks.error)throw ranks.error;return {...state.data,leaderboard:ranks.data||[]};},
+    async getPublic(){if(demo)return demoState();if(!db)return {event:null,roster:[],teams:[],matches:[]};const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;return data;},
     async getAdmin(){if(demo)return {...demoState(),players:demoData.players,match_changes:demoData.matches.flatMap(m=>(m.mmr_changes||[]).map(c=>({...c,match_id:m.id}))),previous_teams:demoData.archives.at(-1)?.teams.map(t=>t.players.map(p=>p.id))||[]};
       const {data,error}=await db.rpc('vmm_get_admin_state');if(error)throw error;
       const {data:changes,error:changesError}=await db.rpc('vmm_get_admin_match_changes');if(changesError)throw changesError;
       return {...data,match_changes:changes||[]};},
-    async join(name){if(demo)return demoAction(()=>{if(!demoData.event||demoData.event.status!=='open')throw Error('Signups are closed.');const key=name.trim().replace(/\s+/g,' ').toLocaleLowerCase();if(key.length<2||key.length>45)throw Error('Enter a name between 2 and 45 characters.');const p=demoData.players.find(x=>x.name.toLocaleLowerCase()===key);if(!p)throw Error('Player not registered. Please ask an admin to create your profile first.');if(demoData.signups.some(x=>x.player_id===p.id))throw Error('That name is already checked in.');if(demoData.signups.length>=96)throw Error('Session has reached its signup limit.');demoData.signups.push({player_id:p.id,checked_at:new Date().toISOString()});});const {data,error}=await db.rpc('vmm_join_event',{p_name:name});if(error)throw error;if(data==='already_joined')throw Error('That name is already checked in.');},
     async addPlayer(name,tier,position,checkIn){if(demo)return demoAction(()=>{
       const clean=name.trim().replace(/\s+/g,' ');
       if(clean.length<2||clean.length>45||!/[a-z0-9]/i.test(clean))throw Error('Enter a valid name between 2 and 45 characters.');
@@ -101,35 +101,68 @@
   };
   function flash(message,error=false){const el=$('#flash');el.hidden=false;el.textContent=message;el.className='flash'+(error?' error':'');if(lastFlashTimer)clearTimeout(lastFlashTimer);lastFlashTimer=setTimeout(()=>el.hidden=true,6500);}
   function errText(e){return e?.message||String(e||'Something went wrong.');}
+  function isPrivateTab(name){return name==='signup'||name==='leaderboard';}
+  function enforceAdminNavigation(){
+    document.querySelectorAll('.nav-tab[data-tab="signup"], .nav-tab[data-tab="leaderboard"]').forEach(el=>{el.hidden=!adminGranted;});
+    const toggle=$('#demo-toggle');if(toggle)toggle.hidden=!adminGranted || !configured;
+    if(!adminGranted && isPrivateTab(tab))switchTab('courts');
+  }
+  // Server RPC performs vmm_assert_admin. Neither localStorage nor ?demo=1 grants admin status.
+  async function verifyAdmin(){
+    if(!db)return false;
+    const {data:identity,error:identityError}=await db.auth.getUser();
+    if(identityError||!identity?.user)return false;
+    user=identity.user;
+    const {error}=await db.rpc('vmm_get_admin_state');
+    return !error;
+  }
   async function refresh(force=false){
     if(loading&&!force)return;
     loading=true;
     const epoch=modeEpoch;
     try{
+      // Re-check server authorization during demo too, including when an admin is revoked or signs out.
+      if(demo && !(await verifyAdmin())){
+        if(epoch!==modeEpoch)return;
+        demo=false;adminGranted=false;admin=null;modeEpoch++;
+        const url=new URL(window.location.href);url.searchParams.delete('demo');
+        if(['http:','https:'].includes(url.protocol))window.history.replaceState(null,'',url.pathname+url.search+'#courts');
+        flash('Admin access is required for Demo Mode. Please sign in again.',true);
+        await refresh(true);return;
+      }
       const next=await api.getPublic();
       if(epoch!==modeEpoch)return;
       pub=next;
       if(demo){admin=await api.getAdmin();if(epoch!==modeEpoch)return;adminGranted=true;}
-      else if(user){try{admin=await api.getAdmin();if(epoch!==modeEpoch)return;adminGranted=true;}catch(e){if(epoch!==modeEpoch)return;adminGranted=false;admin=null;if(tab==='admin'&&lastError!=='admin-denied'){flash('Signed in, but this account is not listed as an admin.',true);lastError='admin-denied';}}}
+      else if(user){try{admin=await api.getAdmin();if(epoch!==modeEpoch)return;adminGranted=true;}catch(e){if(epoch!==modeEpoch)return;adminGranted=false;admin=null;}}
       else{admin=null;adminGranted=false;}
+      enforceAdminNavigation();
       if(adminGranted||!user)lastError='';
       render();
-      $('#connection-status').textContent=demo?'LOCAL SANDBOX':'Synced';
+      $('#connection-status').textContent=!configured?'Setup required':demo?'LOCAL SANDBOX':'Synced';
     }catch(e){if(epoch!==modeEpoch)return;if(lastError!==errText(e)){flash(`Connection error: ${errText(e)}`,true);lastError=errText(e);}$('#connection-status').textContent='Connection failed';}
     finally{if(epoch===modeEpoch)loading=false;}
   }
   async function setDemoMode(enable){
-    if(!enable&&!configured){flash('The live site needs a configured Supabase connection. This installation can still use demo mode.',true);return;}
-    if(demo===enable)return;
+    if(enable){
+      if(!configured||!db||!user||!await verifyAdmin()){
+        adminGranted=false;admin=null;enforceAdminNavigation();
+        flash('Demo Mode is for approved admins. Sign in through the Admin tab first.',true);switchTab('admin');
+        return false;
+      }
+      adminGranted=true;
+    }
+    if(!enable&&!configured){flash('A Supabase connection is required.',true);return false;}
+    if(demo===enable)return true;
     modeEpoch++;demo=enable;
-    pub=null;admin=null;adminGranted=false;lastError='';searchText='';attendanceSearch='';attendanceDropdownOpen=false;
+    pub=null;admin=null;lastError='';searchText='';attendanceSearch='';attendanceDropdownOpen=false;
     const url=new URL(window.location.href);
     if(enable){url.searchParams.set('demo','1');readDemo();}
     else{url.searchParams.delete('demo');if(db){const {data,error}=await db.auth.getSession();if(error)flash('Could not check sign-in status: '+errText(error),true);user=data?.session?.user||null;}}
-    // File previews and about:blank browser tests cannot safely rewrite history.
-    if(url.protocol==='http:'||url.protocol==='https:'){try{window.history.replaceState(null,'',url.pathname+url.search+url.hash);}catch(e){/* Nonfatal in previews */}}
+    if(url.protocol==='http:'||url.protocol==='https:'){try{window.history.replaceState(null,'',url.pathname+url.search+url.hash);}catch(e){/* no history in local previews */}}
     await refresh(true);
-    flash(enable?'Demo Mode started. Your real players and match results are safe.':'Back to live Supabase data. Demo changes have not been uploaded.');
+    if(enable?demo:!demo){flash(enable?'Private Demo Mode started. Nothing will be saved to live Supabase.':'Back to live courts. Demo changes were not uploaded.');}
+    return true;
   }
   function loadDemoScenario(count){
     if(!demo)throw Error('Practice scenarios only run in Demo Mode.');
@@ -155,33 +188,35 @@
     const worked=await act(()=>api.report(m.id,m.team_a_id,scoreA,scoreB),`Practice score: Court ${m.court}, Match ${m.order} — ${scoreA}–${scoreB}. Sample player ratings updated only on this device.`);
     if(worked)switchTab('courts');
   }
-  function switchTab(next){tab=next;document.querySelectorAll('.nav-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${tab}`));render();window.location.hash=tab;}
+  function switchTab(next){if(!['signup','courts','leaderboard','admin'].includes(next))next='courts';if(isPrivateTab(next)&&!adminGranted)next='courts';tab=next;document.querySelectorAll('.nav-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${tab}`));if(pub)render();window.location.hash=tab;}
   function teamName(t){return t?`Team ${t.number}`:'TBD';}
   function teamById(teamId){return pub?.teams?.find(t=>t.id===teamId)||null;}
   function statusPill(text,cls=''){return `<span class="pill ${cls}">${safe(text)}</span>`;}
-  function render(){if(!pub)return;document.body.dataset.activeTab=tab;const e=pub.event;$('#event-status').textContent=e?`${e.status==='open'?'SIGNUPS OPEN':'MATCHES IN PROGRESS'} · ${niceDate(e.date).toUpperCase()} · ROUND ${e.round_number||1}`:'VOLLEYBALL MATCHMAKER';$('#hero-title').innerHTML=e?`${safe(e.title)}<br/><em>${e.status==='open'?'Find your squad.':'Game on.'}</em>`:'Everybody plays.<br/><em>Every point counts.</em>';$('#hero-description').textContent=e?`Two courts. Three teams per court. ${e.team_size} spots per team, with fill-in substitutes when needed. Every team gets two games.`:'Build volleyball teams, follow live scores, and explore player leaderboards.';$('#mode-indicator').textContent=demo?'DEMO MODE':'LIVE SYNC';$('#demo-banner').hidden=!demo;const toggle=$('#demo-toggle');toggle.textContent=demo?'✓ Demo active':'▶ Try demo';toggle.classList.toggle('demo-is-active',demo);toggle.setAttribute('aria-label',demo?'Demo mode active; return to live site':'Start demo mode');toggle.setAttribute('aria-pressed',String(demo));const exitDemo=document.querySelector('[data-action=exit-demo]');if(exitDemo)exitDemo.hidden=!configured;const demoHint=$('#demo-hint');if(demo&&demoHint)demoHint.textContent=pub?.event?.status==='locked'?`${pub.matches.filter(m=>m.winner_team_id).length} of 6 practice matches complete. Simulate another result or use Live Courts → Session Management to undo. Please note: demo changes never affect the live database.`:`${pub?.roster?.length||0} of ${pub?.event?.capacity||36} sample spots filled. Choose court mode in Live Courts, then build teams.`;
-$('#signup-body').innerHTML=renderSignup();$('#courts-body').innerHTML=renderCourts();$('#leaderboard-body').innerHTML=renderLeaderboard();$('#admin-body').innerHTML=renderAdmin();}
-  function renderSignup(){const e=pub.event;if(!e)return `<div class="empty"><span class="empty-icon">🏐</span><strong>No open session</strong><p>An admin needs to create a new volleyball session before players can check in.</p></div>`;
-    const count=pub.roster.length,cap=e.capacity,slots=Math.max(0,cap-count);const inNext=new Set(priorityRoster().slice(0,cap).map(p=>p.id));const checked=count>=cap;const status=e.status==='open'?'Open for check-in':'Teams are already locked';
-    const stats=`<div class="stat-row"><div class="stat"><span class="value">${count}</span><span class="label">Checked in</span></div><div class="stat highlight"><span class="value">${e.status==='locked'?'✓':slots}</span><span class="label">${e.status==='locked'?'Teams built':'Spots to fill'}</span></div><div class="stat"><span class="value">${e.round_number||1}</span><span class="label">Current round</span></div></div>`;
-    const roster=pub.roster.map((p,i)=>{const t=teamById(p.team_id);const status=t?statusPill(`C${t.court} · T${t.number}`):(e.status==='locked'||!inNext.has(p.id))?statusPill('Waitlist','wait'):statusPill('Checked in','muted');return `<div class="roster-item"><span class="roster-num">${i+1}</span><span class="roster-name">${safe(p.name)}</span>${status}</div>`;}).join('');
-    return `${stats}<div class="split"><section class="panel"><div class="panel-head"><h3 id="signup-title">Player check-in</h3>${statusPill(status,e.status==='open'?'':'muted')}</div><p class="subtle">Enter the name your admin registered. Check in with your registered name. Your team assignment will appear here when it is ready.</p><form id="join-form" class="form-stack"><div><label class="label-input" for="player-name">Your name</label><input id="player-name" class="field" name="name" type="text" placeholder="First name + last initial" minlength="2" maxlength="45" autocomplete="name" required ${e.status==='locked'?'disabled':''}/></div><button type="submit" class="btn btn-primary btn-full" ${e.status==='locked'?'disabled':''}>${e.status==='locked'?'Check-in closed':'Check in →'}</button></form><div class="divider"></div><div class="small-caps">Session progress</div><div class="progress-wrap"><span style="width:${Math.min(100,Math.round(count/cap*100))}%"></span></div><div class="subtle">${e.status==='locked'?'Matchups are published. Follow the Live Courts tab.':checked?'Six full teams can be made. Extra players rotate in on later rounds.':count>=6?`Teams can be made now with ${plural(slots,'substitute spot')}.`: `${plural(6-count,'more registered player')} needed to build six teams.`}</div><div class="hint" style="margin-top:17px">An admin must create your player profile before your first check-in. Returning players can use their existing profile.</div></section><section class="panel"><div class="panel-head"><h3>Checked-in players</h3><span class="small-caps">${count} total</span></div>${roster?`<div class="roster-list">${roster}</div>`:'<div class="empty"><strong>No players yet</strong><p>Be the first to check in.</p></div>'}</section></div>`;
+  function render(){if(!pub)return;document.body.dataset.activeTab=tab;const e=pub.event;$('#event-status').textContent=e?`${e.status==='open'?'SIGNUPS OPEN':'MATCHES IN PROGRESS'} · ${niceDate(e.date).toUpperCase()} · ROUND ${e.round_number||1}`:'VOLLEYBALL MATCHMAKER';$('#hero-title').innerHTML=e?`${safe(e.title)}<br/><em>${e.status==='open'?'Find your squad.':'Game on.'}</em>`:'Everybody plays.<br/><em>Every point counts.</em>';$('#hero-description').textContent=e?`Two courts. Three teams per court. ${e.team_size} spots per team, with fill-in substitutes when needed. Every team gets two games.`:'Follow live volleyball teams, rotations, and match scores on both courts.';$('#mode-indicator').textContent=demo?'DEMO MODE':'LIVE SYNC';$('#demo-banner').hidden=!(demo&&adminGranted);const toggle=$('#demo-toggle');toggle.hidden=!adminGranted||!configured;toggle.textContent=demo?'✓ Demo active':'▶ Try demo';toggle.classList.toggle('demo-is-active',demo);toggle.setAttribute('aria-label',demo?'Demo mode active; return to live site':'Start demo mode');toggle.setAttribute('aria-pressed',String(demo));const exitDemo=document.querySelector('[data-action=exit-demo]');if(exitDemo)exitDemo.hidden=!configured;const demoHint=$('#demo-hint');if(demo&&demoHint)demoHint.textContent=pub?.event?.status==='locked'?`${pub.matches.filter(m=>m.winner_team_id).length} of 6 practice matches complete. Simulate another result or use Live Courts → Session Management to undo. Please note: demo changes never affect the live database.`:`${pub?.roster?.length||0} of ${pub?.event?.capacity||36} sample spots filled. Choose court mode in Live Courts, then build teams.`;
+$('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').innerHTML=renderCourts();$('#leaderboard-body').innerHTML=adminGranted?renderLeaderboard():'';$('#admin-body').innerHTML=renderAdmin();}
+  // Attendance is an admin-only page, not a public name-based signup form.
+  function renderSignup(){
+    if(!adminGranted)return '';
+    const e=pub.event;
+    const heading='<div class="section-top"><div><h2 id="signup-title" class="section-title">Admin check-in</h2><p class="section-sub">Search saved player profiles and mark who arrived. These attendance controls are private.</p></div></div>';
+    if(!e)return heading+'<div class="empty"><strong>No open session</strong><p>Create a session in Live Courts → Session Management first.</p></div>';
+    const stats=`<div class="stat-row"><div class="stat"><span class="value">${pub.roster.length}</span><span class="label">Here today</span></div><div class="stat highlight"><span class="value">${Math.max(0,e.capacity-pub.roster.length)}</span><span class="label">Spots to fill</span></div><div class="stat"><span class="value">${e.round_number||1}</span><span class="label">Current round</span></div></div>`;
+    return heading+stats+renderAttendance();
   }
   function renderLeaderboard(){
-    const ranked=pub.leaderboard||[];
+    if(!adminGranted||!admin?.players)return '';
+    const ranked=[...admin.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name));
     const filtered=ranked.filter(p=>leaderboardPosition==='All'||(p.position||'Unspecified')===leaderboardPosition);
     const positionCounts=POSITIONS.map(p=>({name:p,count:ranked.filter(r=>(r.position||'Unspecified')===p).length}));
     const sumWins=ranked.reduce((sum,p)=>sum+(p.wins||0),0);
-    const list=filtered.map((p,i)=>{
-      return `<div class="ranking-row"><div class="ranking-number ${i<3?'top-rank':''}">${i+1}</div><div class="ranking-person"><strong>${safe(p.name)}</strong><span>${safe(p.position||'Unspecified')}</span></div><div class="ranking-record">${p.wins||0}W <span>·</span> ${p.losses||0}L</div></div>`;
-    }).join('');
-    return `<div class="section-top"><div><h2 id="leaderboard-title" class="section-title">Player leaderboards</h2><p class="section-sub">Browse player standings and filter by preferred volleyball position.</p></div></div>
+    const list=filtered.map((p,i)=>`<div class="ranking-row"><div class="ranking-number ${i<3?'top-rank':''}">${i+1}</div><div class="ranking-person"><strong>${safe(p.name)}</strong><span>${safe(p.position||'Unspecified')}</span></div><div class="ranking-mmr">${Number(p.mmr).toLocaleString()} MMR</div><div class="ranking-record">${p.wins||0}W <span>·</span> ${p.losses||0}L</div></div>`).join('');
+    return `<div class="section-top"><div><h2 id="leaderboard-title" class="section-title">Private player rankings</h2><p class="section-sub">Admin-only MMR leaderboards, filtered by preferred volleyball position.</p></div>${statusPill('Admin only','muted')}</div>
       <section class="panel leaderboard-panel">
-        <div class="leaderboard-summary"><div><span class="mini-label">Registered players</span><strong>${ranked.length}</strong></div><div><span class="mini-label">Matches recorded</span><strong>${Math.round(sumWins)}</strong></div><div><span class="mini-label">Selected position</span><strong>${leaderboardPosition==='All'?'All':filtered.length}</strong></div></div>
+        <div class="leaderboard-summary"><div><span class="mini-label">Registered players</span><strong>${ranked.length}</strong></div><div><span class="mini-label">Wins recorded</span><strong>${Math.round(sumWins)}</strong></div><div><span class="mini-label">Selected position</span><strong>${leaderboardPosition==='All'?'All':filtered.length}</strong></div></div>
         <div class="leaderboard-toolbar"><label class="label-input" for="leaderboard-filter">Preferred position</label><select id="leaderboard-filter" class="field">${positionOptions(leaderboardPosition,true)}</select></div>
         <div class="position-summary">${positionCounts.filter(x=>x.count).map(x=>`<span>${safe(x.name)} <b>${x.count}</b></span>`).join('')}</div>
-        <div class="ranking-list">${list||'<div class="empty"><strong>No players in this position yet</strong><p>Admins can assign a preferred position when creating or editing a player.</p></div>'}</div>
-        <p class="subtle leaderboard-note">Positions are for organizing leaderboards. Team assignments are made separately.</p>
+        <div class="ranking-list">${list||'<div class="empty"><strong>No players in this position yet</strong><p>Admins can assign a preferred position when editing player profiles.</p></div>'}</div>
+        <p class="subtle leaderboard-note">Actual MMR is visible only to approved admins. Preferred positions do not affect match balancing.</p>
       </section>`;
   }
   const signedChange=value=>`${value>0?'+':''}${value}`;
@@ -305,9 +340,9 @@ $('#signup-body').innerHTML=renderSignup();$('#courts-body').innerHTML=renderCou
       </form></section>`;}
   function renderAdmin(){if(!demo&&!user)return `<section class="panel" style="max-width:500px;margin:0 auto"><div class="panel-head"><h3 id="admin-title">Admin sign-in</h3>${statusPill('Private','muted')}</div><p class="subtle">Only approved staff can manage player profiles, attendance, team assignments, and match results.</p><form id="login-form" class="form-stack"><div><label for="admin-email" class="label-input">Email</label><input id="admin-email" class="field" type="email" name="email" placeholder="you@example.com" autocomplete="username" required /></div><div><label for="admin-password" class="label-input">Password</label><input id="admin-password" class="field" type="password" name="password" autocomplete="current-password" required /></div><button type="submit" class="btn btn-primary btn-full">Sign in securely</button></form><p class="subtle">Admins are approved in Supabase, not through a hardcoded website password.</p></section>`;
     if(!adminGranted)return `<section class="panel"><div class="panel-head"><h3 id="admin-title">Admin permission required</h3></div><p>Your Supabase account is signed in but is not authorized in <code>vmm_admins</code>. Ask the database owner to add this account.</p><button data-action="logout" class="btn btn-secondary">Sign out</button></section>`;
-    const header=`<div class="section-top"><div><h2 id="admin-title" class="section-title">Player administration</h2><p class="section-sub">${demo?'Demo controls: no account needed':`Signed in as ${safe(user?.email||'admin')}`}</p></div>${!demo?'<button class="btn btn-small btn-secondary" data-action="logout">Sign out</button>':''}</div>`;
+    const header=`<div class="section-top"><div><h2 id="admin-title" class="section-title">Player administration</h2><p class="section-sub">${demo?'Private sandbox · approved admin':`Signed in as ${safe(user?.email||'admin')}`}</p></div>${!demo?'<button class="btn btn-small btn-secondary" data-action="logout">Sign out</button>':''}</div>`;
     const ratings=`<section class="panel admin-section admin-edit-profiles"><div class="panel-head"><h3>Edit player profiles</h3><span class="small-caps">${admin?.players?.length||0} registered</span></div><p class="subtle">By default only the first <strong>5 players</strong> appear below. Use <strong>Show all</strong> to expand or search to find anyone. Ratings stay private to admins.</p>${renderPlayerRatings(false)}</section>`;
-    return `${header}${pub.event?renderAttendance():''}<div class="admin-grid"><div>${renderAddPlayerForm()}</div><div>${ratings}</div></div><div class="admin-panel"><button class="btn btn-secondary btn-full" type="button" data-tab="courts">🏐 Open Live Courts · session management & private results →</button></div>`;
+    return `${header}<div class="admin-grid"><div>${renderAddPlayerForm()}</div><div>${ratings}</div></div><div class="admin-panel"><button class="btn btn-secondary btn-full" type="button" data-tab="signup">✓ Open admin check-in →</button><button class="btn btn-secondary btn-full" type="button" data-tab="courts">🏐 Open Live Courts · management & private results →</button></div>`;
   }
   function renderSessionManagement(){
     if(!adminGranted)return '';
@@ -326,7 +361,7 @@ $('#signup-body').innerHTML=renderSignup();$('#courts-body').innerHTML=renderCou
   function renderPrivateMatchRatings(){
     if(!adminGranted || !pub?.event)return '';
     const finished=pub.matches.filter(m=>m.winner_team_id).sort((a,b)=>(a.completed_seq||0)-(b.completed_seq||0));
-    return `<section class="panel admin-private-results" id="live-private-results" aria-label="Admin-only match ratings"><div class="panel-head"><h3>🔒 Private match ratings</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Exact MMR changes after each match. These final MMR values are visible only to approved admins on Live Courts. Players and public leaderboards never receive these values.</p>${finished.length?`<div class="private-result-grid">${finished.map(m=>`<article class="private-result"><div class="private-result-head"><strong>Court ${m.court} · Match ${m.order}</strong><span>${safe(teamName(teamById(m.winner_team_id)))} won ${m.score_a}–${m.score_b}</span></div>${matchRatingDetails(m,teamById(m.team_a_id),teamById(m.team_b_id))}</article>`).join('')}</div>`:'<p class="subtle">Record a final score above to see each player’s MMR change and final rating for that match.</p>'}</section>`;
+    return `<section class="panel admin-private-results" id="live-private-results" aria-label="Admin-only match ratings"><div class="panel-head"><h3>🔒 Private match ratings</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Exact MMR changes after each match. These final MMR values are visible only to approved admins on Live Courts. Only approved admins receive these values.</p>${finished.length?`<div class="private-result-grid">${finished.map(m=>`<article class="private-result"><div class="private-result-head"><strong>Court ${m.court} · Match ${m.order}</strong><span>${safe(teamName(teamById(m.winner_team_id)))} won ${m.score_a}–${m.score_b}</span></div>${matchRatingDetails(m,teamById(m.team_a_id),teamById(m.team_b_id))}</article>`).join('')}</div>`:'<p class="subtle">Record a final score above to see each player’s MMR change and final rating for that match.</p>'}</section>`;
   }
   function renderCreateForm(){return `<form id="create-form" class="form-stack"><div><label class="label-input" for="new-title">Session name</label><input class="field" id="new-title" name="title" value="Open Volleyball" required minlength="3" maxlength="70" /></div><div><label class="label-input" for="new-date">Session date</label><input class="field" id="new-date" name="date" type="date" value="${localDate()}" required /></div><div><label class="label-input" for="new-size">Players per team</label><select class="field" name="size" id="new-size"><option value="2">2v2 · 12 players</option><option value="3">3v3 · 18 players</option><option value="4">4v4 · 24 players</option><option value="5">5v5 · 30 players</option><option value="6" selected>6v6 · 36 players (default)</option></select></div><div class="hint">One session can include multiple balanced rounds. Each round has six teams, three per court, with two matches per team. Games and wait times depend on how long matches take.</div><button type="submit" class="btn btn-primary">Open signups →</button></form>`;}
   function renderPlayerRatings(currentOnly){
@@ -375,9 +410,9 @@ $('#signup-body').innerHTML=renderSignup();$('#courts-body').innerHTML=renderCou
     if(!confirm(`Record Court ${match.court} · Match ${match.order}\n${teamName(teamById(match.team_a_id))} ${a} – ${b} ${teamName(teamById(match.team_b_id))}\nWinner: ${teamName(winner)}\n\nConfirm final score?`))return;
     await act(()=>api.report(match.id,winner.id,a,b),`Court ${match.court} result saved: ${teamName(winner)} wins ${Math.max(a,b)}–${Math.min(a,b)}. See private rating details farther down Live Courts.`);
   }
-  document.addEventListener('submit',async ev=>{const form=ev.target;if(form.classList.contains('live-score-form')){ev.preventDefault();await handleScore(form);return;}if(!['join-form','login-form','create-form','add-player-form'].includes(form.id))return;ev.preventDefault();const values=new FormData(form);if(form.id==='join-form'){const name=String(values.get('name')||'').trim();await act(()=>api.join(name),`${name} checked in successfully!`);}else if(form.id==='add-player-form'){const name=String(values.get('name')||'').trim(),tier=String(values.get('tier')||''),position=String(values.get('position')||''),checkIn=values.get('checkin')==='on';await act(()=>api.addPlayer(name,tier,position,checkIn),`${name} added${checkIn?' and checked in':''}.`);}else if(form.id==='create-form'){const title=String(values.get('title')||'').trim(),date=String(values.get('date')||''),size=Number(values.get('size'));await act(()=>api.createEvent(title,date,size),'Session created. Check-in is open.');}else{if(!db){flash('Add your Supabase configuration first.',true);return;}try{const {data,error}=await db.auth.signInWithPassword({email:String(values.get('email')),password:String(values.get('password'))});if(error)throw error;user=data.user;await refresh();if(adminGranted)flash('Admin signed in.');}catch(e){flash(errText(e),true);}}});
-  $('#demo-toggle')?.addEventListener('click',async ()=>{if(demo){if(configured)await setDemoMode(false);else flash('This copy of the site has no live Supabase connection; demo mode is available.');}else await setDemoMode(true);});
-  document.addEventListener('click',async ev=>{const nav=ev.target.closest('[data-tab]');if(nav){switchTab(nav.dataset.tab);return;}const btn=ev.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action;switch(action){
+  document.addEventListener('submit',async ev=>{const form=ev.target;if(form.classList.contains('live-score-form')){ev.preventDefault();await handleScore(form);return;}if(!['login-form','create-form','add-player-form'].includes(form.id))return;ev.preventDefault();const values=new FormData(form);if(form.id==='add-player-form'){const name=String(values.get('name')||'').trim(),tier=String(values.get('tier')||''),position=String(values.get('position')||''),checkIn=values.get('checkin')==='on';await act(()=>api.addPlayer(name,tier,position,checkIn),`${name} added${checkIn?' and checked in':''}.`);}else if(form.id==='create-form'){const title=String(values.get('title')||'').trim(),date=String(values.get('date')||''),size=Number(values.get('size'));await act(()=>api.createEvent(title,date,size),'Session created. Check-in is open.');}else{if(!db){flash('Add your Supabase configuration first.',true);return;}try{const {data,error}=await db.auth.signInWithPassword({email:String(values.get('email')),password:String(values.get('password'))});if(error)throw error;user=data.user;await refresh();if(adminGranted)flash('Admin signed in.');}catch(e){flash(errText(e),true);}}});
+  $('#demo-toggle')?.addEventListener('click',async ()=>{if(!adminGranted)return;if(demo)await setDemoMode(false);else await setDemoMode(true);});
+  document.addEventListener('click',async ev=>{const nav=ev.target.closest('[data-tab]');if(nav){switchTab(nav.dataset.tab);return;}const btn=ev.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action;if((action.startsWith('demo-')||action==='exit-demo'||action==='jump-ratings')&&!adminGranted)return;switch(action){
     case 'exit-demo':await setDemoMode(false);break;
     case 'demo-full':if(demo){if(demoData.history.length||demoData.teams.length){if(!confirm('Start a new practice with 36 sample attendees? Existing demo results will be reset; live data stays safe.'))break;}loadDemoScenario(36);await refresh();flash('36 sample players are checked in. Six full teams are ready to generate.');switchTab('admin');}break;
     case 'demo-subs':if(demo){if(demoData.history.length||demoData.teams.length){if(!confirm('Start a new practice with 28 players and 8 fill-in slots? Demo results will be reset.'))break;}loadDemoScenario(28);await refresh();flash('28 sample players checked in. Team generation will add 8 unrated substitute placeholders.');switchTab('admin');}break;
@@ -412,9 +447,9 @@ $('#signup-body').innerHTML=renderSignup();$('#courts-body').innerHTML=renderCou
     case 'undo':if(confirm('Undo the latest recorded result and restore the previous ratings?'))await act(()=>api.undo(pub.event.id),'Latest match result undone.');break;
     case 'reset':if(confirm('Erase team assignments and reopen check-in? No results can be recorded.'))await act(()=>api.resetRound(pub.event.id),'Teams reset. You can rebalance and publish again.');break;
     case 'close':if(confirm('Finish this session? Rankings persist, but the live court display will be cleared.'))await act(()=>api.closeEvent(pub.event.id),'Session finished. You can create another.');break;
-    case 'logout':if(db)await db.auth.signOut();user=null;admin=null;adminGranted=false;await refresh();flash('Signed out.');break;
+    case 'logout':if(db)await db.auth.signOut();user=null;admin=null;adminGranted=false;if(demo)await setDemoMode(false);await refresh(true);flash('Signed out.');break;
   }});
-  document.addEventListener('change',ev=>{if(ev.target?.classList?.contains('tier-preset')&&ev.target.value){ev.target.closest('.profile-controls').querySelector('.profile-mmr').value=ev.target.value;}if(ev.target?.id==='leaderboard-filter'){leaderboardPosition=ev.target.value;$('#leaderboard-body').innerHTML=renderLeaderboard();}});
+  document.addEventListener('change',ev=>{if(ev.target?.classList?.contains('tier-preset')&&ev.target.value){ev.target.closest('.profile-controls').querySelector('.profile-mmr').value=ev.target.value;}if(ev.target?.id==='leaderboard-filter'&&adminGranted){leaderboardPosition=ev.target.value;$('#leaderboard-body').innerHTML=renderLeaderboard();}});
   document.addEventListener('input',ev=>{if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=Boolean(attendanceSearch.trim());attendanceActive=0;updateAttendanceSuggestions();}if(ev.target?.closest('.live-score-form'))updateScorePreview(ev.target.closest('.live-score-form'));if(ev.target?.id==='player-search'){searchText=ev.target.value;const pos=ev.target.selectionStart;$('#admin-body').innerHTML=renderAdmin();const restored=$('#player-search');restored?.focus();if(pos!==null)restored?.setSelectionRange(pos,pos);}});
   document.addEventListener('keydown',ev=>{
     if(ev.target?.id!=='attendance-search')return;
@@ -440,8 +475,17 @@ $('#signup-body').innerHTML=renderSignup();$('#courts-body').innerHTML=renderCou
   document.addEventListener('focusin',ev=>{
     if(ev.target?.id==='attendance-search'&&attendanceSearch.trim()){attendanceDropdownOpen=true;updateAttendanceSuggestions();}
   });
-  $('#demo-reset').addEventListener('click',()=>{if(!confirm('Reset the demo, sample players, and all round results?'))return;demoData=seedDemo();demoData.signups=demoData.players.slice(0,36).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));storeDemo();searchText='';refresh();flash('Practice session reset with 36 sample players checked in.');});
-  document.querySelectorAll('.nav-tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
-  async function init(){const hash=window.location.hash.substring(1);if(['signup','courts','leaderboard','admin'].includes(hash))switchTab(hash);if(configured&&!db){flash('Supabase library could not load. Check your internet connection.',true);return;}if(demo){readDemo();adminGranted=true;}else{const {data}=await db.auth.getSession();user=data?.session?.user||null;db.auth.onAuthStateChange((_event,session)=>{user=session?.user||null;});}await refresh();setInterval(()=>{if(!mutating&&document.visibilityState==='visible'&&!document.activeElement?.matches('input,select'))refresh();},12000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!mutating)refresh();});}
+  $('#demo-reset').addEventListener('click',()=>{if(!demo||!adminGranted)return;if(!confirm('Reset the demo, sample players, and all round results?'))return;demoData=seedDemo();demoData.signups=demoData.players.slice(0,36).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));storeDemo();searchText='';refresh();flash('Practice session reset with 36 sample players checked in.');});
+  async function init(){
+    if(configured&&!db){flash('Supabase library could not load. Check your internet connection.',true);return;}
+    if(db){const {data}=await db.auth.getSession();user=data?.session?.user||null;
+      db.auth.onAuthStateChange((_event,session)=>{user=session?.user||null;if(!user){adminGranted=false;admin=null;if(demo){setDemoMode(false).catch(()=>{});}else{enforceAdminNavigation();if(pub)render();}}});}
+    await refresh();
+    const hash=window.location.hash.substring(1);
+    if(['signup','courts','leaderboard','admin'].includes(hash))switchTab(hash);
+    if(requestedDemo)await setDemoMode(true);
+    setInterval(()=>{if(!mutating&&document.visibilityState==='visible'&&!document.activeElement?.matches('input,select'))refresh();},12000);
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!mutating)refresh();});
+  }
   init().catch(e=>flash(errText(e),true));
 })();
