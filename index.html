@@ -3,34 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#101b2a" />
+  <meta name="theme-color" content="#071d49" />
   <meta name="description" content="Two-court volleyball signup, balanced teams, live rounds and skill-based rankings." />
   <title>RallyRank — Volleyball Matchmaker</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="page-shell">
+    <div class="utility-bar"><span><span class="utility-ball">●</span> THE COMMUNITY VOLLEYBALL MATCHDAY HUB</span><span class="utility-right">2 COURTS <span class="utility-sep">/</span> 6 TEAMS <span class="utility-sep">/</span> ALL LEVELS</span></div>
     <header class="site-header">
       <a class="brand" href="#signup" aria-label="RallyRank home">
         <span class="brand-icon" aria-hidden="true">
-          <svg viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="22" stroke="currentColor" stroke-width="3"/><path d="M12 15c11 2 20 11 19 24M24 7c5 12 1 23-13 29M46 14C33 17 25 30 26 50M49 31C35 24 20 26 9 39" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          <svg viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="23" stroke="currentColor" stroke-width="3.4"/><path d="M14 17c12 2 21 12 19 26M26 7c4 14 0 25-15 32M50 17C35 20 27 34 29 53M49 37C36 28 20 31 10 44" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
         </span>
-        <span class="brand-text"><strong>RALLY<span>RANK</span></strong><small>VOLLEYBALL MATCHMAKER</small></span>
+        <span class="brand-text"><strong>RALLY<span>RANK</span></strong><small>VOLLEYBALL MATCHDAY</small></span>
       </a>
       <div class="header-actions"><span id="mode-indicator" class="mode-indicator">Loading</span><span id="connection-status" class="connection-status"></span></div>
     </header>
 
     <nav class="main-nav" aria-label="Main navigation">
-      <button class="nav-tab active" data-tab="signup" type="button"><span class="nav-emoji" aria-hidden="true">✍</span> Check in</button>
-      <button class="nav-tab" data-tab="courts" type="button"><span class="nav-emoji" aria-hidden="true">🏐</span> Live courts</button>
-      <button class="nav-tab" data-tab="leaderboard" type="button"><span class="nav-emoji" aria-hidden="true">🏆</span> Rankings</button>
-      <button class="nav-tab" data-tab="admin" type="button"><span class="nav-emoji" aria-hidden="true">⚙</span> Admin</button>
+      <button class="nav-tab active" data-tab="signup" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M5 21v-2a7 7 0 0 1 14 0v2M17 12l2 2 4-4"/></svg><span>Check in</span></button>
+      <button class="nav-tab" data-tab="courts" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2"/><path d="M12 4v16M2.5 12h19M6 7h3m6 10h3"/></svg><span>Live courts</span></button>
+      <button class="nav-tab" data-tab="leaderboard" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8v9a4 4 0 0 1-8 0V3Zm-4 2H2v3a5 5 0 0 0 6 5m12-8h2v3a5 5 0 0 1-6 5M12 16v3m-4 2h8"/></svg><span>Rankings</span></button>
+      <button class="nav-tab" data-tab="admin" type="button"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3m-4 4v3"/></svg><span>Admin</span></button>
     </nav>
 
     <main>
       <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-copy"><div class="eyebrow"><span class="pulse-dot"></span><span id="event-status">SESSION</span></div><h1 id="hero-title">Everybody plays.<br /><em>Every point counts.</em></h1><p id="hero-description">Check in, get matched with a balanced team, and play two matches on your court.</p></div>
-        <div class="hero-symbol" aria-hidden="true"><svg viewBox="0 0 280 280" fill="none"><circle cx="140" cy="140" r="119" stroke="currentColor" stroke-width="7"/><path d="M52 39c63 10 112 66 105 139M114 24c20 63-8 137-83 167M241 65c-77 11-122 83-105 191M255 170c-68-44-155-35-208 43" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg></div>
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="pulse-dot"></span><span id="event-status">SESSION</span></div>
+          <h1 id="hero-title">Everybody plays.<br /><em>Every point counts.</em></h1>
+          <p id="hero-description">Check in, get matched with a balanced team, and play two matches on your court.</p>
+          <div class="hero-facts" aria-label="Session format">
+            <span><strong>02</strong> COURTS</span><span><strong>06</strong> TEAMS</span><span><strong>02</strong> GAMES / TEAM</span>
+          </div>
+        </div>
+        <div class="hero-symbol" aria-hidden="true">
+          <svg viewBox="0 0 380 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(30 52) rotate(-12 160 116)">
+              <rect x="21" y="32" width="318" height="214" rx="13" fill="#13336d" stroke="#93b1d6" stroke-width="3"/>
+              <path d="M180 34v210M22 139h315M101 34v210M258 34v210" stroke="#7694bf" stroke-width="2.5" opacity=".8"/>
+              <rect x="34" y="46" width="292" height="186" rx="3" stroke="#ccdeee" stroke-width="2" stroke-dasharray="5 9" opacity=".6"/>
+              <path d="M176 23v231M182 23v231" stroke="white" stroke-width="4"/>
+              <path d="M174 29h9M174 44h9M174 59h9M174 74h9M174 89h9M174 104h9M174 119h9M174 134h9M174 149h9M174 164h9M174 179h9M174 194h9M174 209h9M174 224h9" stroke="white" stroke-width="1.5" opacity=".5"/>
+              <g fill="#fff"><circle cx="63" cy="90" r="9"/><circle cx="83" cy="186" r="9"/><circle cx="145" cy="146" r="9"/></g>
+              <g fill="#f04758"><circle cx="235" cy="86" r="9"/><circle cx="307" cy="141" r="9"/><circle cx="219" cy="199" r="9"/></g>
+            </g>
+            <g transform="translate(251 17)"><circle r="38" fill="#ffffff" stroke="#e2e7ef" stroke-width="2"/><path d="M-32 -7C-9 -3 10 14 5 34M-15 -34C-14 -14 -22 2 -36 12M32 -11C6 -3 -3 11 -9 37M32 14C15 1 -10 1 -25 23" stroke="#bd243d" stroke-width="3.5" stroke-linecap="round"/></g>
+          </svg>
+        </div>
       </section>
 
       <div id="flash" role="status" aria-live="polite" class="flash" hidden></div>
@@ -49,7 +70,7 @@
         <div id="admin-body"></div>
       </section>
     </main>
-    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> LET'S PLAY</span><span>V1.03</span></footer>
+    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> MADE FOR THE COURT</span><span>V1.04</span></footer>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js"></script>

@@ -1,4 +1,4 @@
-/* RallyRank V1.03 — balance up to six teams with unrated temporary sub slots. */
+/* RallyRank V1.04 — balanced teams and score-margin-adjusted MMR. */
 (function(root){
   'use strict';
   const TEAM_COUNT=6;
@@ -14,6 +14,17 @@
   function swing(winnerAverage,loserAverage){
     const expected=1/(1+Math.pow(10,(loserAverage-winnerAverage)/400));
     return Math.max(4,Math.round(K_FACTOR*(1-expected)));
+  }
+  // Win margin has deliberately small influence: +0 to +4 MMR per player.
+  // e.g. 25-23 = +0, 25-20 = +1, 25-15 = +2, 25-5 = +4.
+  function marginBonus(scoreA,scoreB){
+    if(scoreA==null || scoreB==null)return 0;
+    const a=Number(scoreA),b=Number(scoreB);
+    if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>99||b>99||a===b)throw Error('Enter different scores from 0 to 99.');
+    return Math.min(4,Math.floor(Math.abs(a-b)/4));
+  }
+  function matchSwing(winnerAverage,loserAverage,scoreA,scoreB){
+    return swing(winnerAverage,loserAverage)+marginBonus(scoreA,scoreB);
   }
   function spread(teams){
     const avgs=teams.map(teamAverage);
@@ -92,7 +103,7 @@
     }
     return best;
   }
-  const api={makeTeams,swing,spread,teamAverage,isPlaceholder,K_FACTOR};
+  const api={makeTeams,swing,marginBonus,matchSwing,spread,teamAverage,isPlaceholder,K_FACTOR};
   root.RallyMath=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
