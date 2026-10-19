@@ -550,3 +550,17 @@ body{background:#f2f5f9;color:var(--text);font-size:14px;background-image:radial
 /* Make 6v6 rosters legible on narrow phone screens. */
 body[data-active-tab="courts"] .hero{display:none}
 @media(max-width:650px){.court-roster .teams-grid{grid-template-columns:1fr;padding:12px;gap:9px}.court-roster .team{padding:12px 14px}.court-roster .team-title{font-size:20px}.court-roster .team-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px;row-gap:2px;margin:7px 0 0}.court-roster .team-members li{font-size:13px;margin:3px 0}.court-roster .team-members li.sub-member{grid-column:1/-1}.court-roster .court-header{padding:14px 17px}}
+
+
+/* RallyRank V1.09 – Live Courts' private-result destination and bounded profile list. */
+.live-courts-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+#view-courts #live-private-results{scroll-margin-top:22px}
+#view-courts .courts-admin-section{display:flex;flex-direction:column;gap:20px}
+#view-courts .courts-admin-section>.panel{margin:0}
+#view-courts #live-private-results{border-top:4px solid var(--scarlet)}
+.admin-edit-profiles .profile-list-meta{padding:10px 12px;border-radius:9px;border:1px solid var(--border);background:var(--panel-alt,#eaf0f7)}
+.admin-edit-profiles .profile-count{color:var(--navy);font-weight:800;font-size:13px;white-space:nowrap}
+.admin-edit-profiles .profile-show-all{white-space:nowrap}
+[data-theme="dark"] .admin-edit-profiles .profile-list-meta{background:#203248;border-color:#3d536b}
+[data-theme="dark"] .admin-edit-profiles .profile-count{color:#f0f6ff}
+@media(max-width:650px){.live-courts-actions{justify-content:stretch}.live-courts-actions .btn{flex:1}.admin-edit-profiles .profile-list-meta{align-items:stretch}.admin-edit-profiles .profile-show-all{width:100%}}
