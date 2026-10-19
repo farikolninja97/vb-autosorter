@@ -515,3 +515,38 @@ body{background:#f2f5f9;color:var(--text);font-size:14px;background-image:radial
 [data-theme=dark] .demo-toggle:not(.demo-is-active){background:#ae253c;color:#fff;border-color:#ae253c}
 @media(max-width:690px){.demo-playground{padding:18px}.demo-playground h2{font-size:22px}.demo-sandbox-label{display:none}.demo-playground .demo-tool{flex:1 1 calc(50% - 9px)}.demo-playground .demo-tool-exit{margin:0}.demo-toggle{padding:6px 10px;font-size:11px}}
 @media(max-width:420px){.demo-playground .demo-tool{font-size:11px}.demo-playground h2{font-size:21px}.demo-toggle{order:2}.header-actions .demo-toggle{min-height:32px}.demo-playground-actions{gap:7px}}
+
+/* V1.08 · court rosters first, admin-only court controls, compact editable profiles */
+.court-roster-heading,.court-matches-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:16px 0 11px}
+.court-roster-heading h3,.court-matches-heading h3{margin:0;font-family:"Barlow Condensed",sans-serif;font-size:26px;line-height:1.15;color:var(--navy);letter-spacing:.25px;text-transform:uppercase}
+.court-roster-heading p,.court-matches-heading p{margin:0;color:#687d98;font-size:12px}
+.courts-roster-layout{align-items:stretch;margin-bottom:27px}
+.court-roster{height:100%}
+.court-schedule-head{background:var(--navy);color:#fff;padding:15px 19px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:3px solid var(--scarlet)}
+.court-schedule-head h3{margin:0;font-family:"Barlow Condensed",sans-serif;font-size:23px;letter-spacing:.2px}
+.court-schedule-head span{font-size:11px;color:#cedef4}
+.court-schedule-2 .court-schedule-head{background:#123d79}
+.courts-matches-layout{align-items:start}
+.courts-admin-section{margin-top:26px;border-top:2px solid var(--border);padding-top:24px}
+.courts-admin-section>.admin-section{margin-bottom:18px}
+.courts-admin-section .admin-private-results{margin-top:18px}
+.profile-list-meta{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.profile-list-meta>.subtle{margin:0;font-size:12px}
+.rating-player-identity{display:flex;flex-direction:column;align-items:flex-start;min-width:0;gap:3px;flex:1}
+.rating-player-identity>strong{font-size:12px;color:var(--navy);white-space:normal;overflow-wrap:anywhere}
+.rating-player-identity .rating-final{font-size:10px;line-height:1.35;color:#516785;white-space:normal}
+.rating-player-identity .rating-final b{font-variant-numeric:tabular-nums;color:var(--navy)}
+.rating-person .rating-delta{font-size:13px;align-self:center}
+.courts-admin-section .admin-private-results .panel-head{flex-wrap:wrap}
+@media(max-width:650px){.court-roster-heading h3,.court-matches-heading h3{font-size:23px}.court-schedule-head{padding:13px 15px}.court-schedule-head h3{font-size:21px}.courts-roster-layout{margin-bottom:23px}}
+@media(max-width:420px){.rating-person .rating-delta{font-size:12px}.rating-player-identity>strong{font-size:11px}.rating-player-identity .rating-final{font-size:9px}}
+[data-theme="dark"] .court-roster-heading h3,[data-theme="dark"] .court-matches-heading h3{color:#f0f6ff}
+[data-theme="dark"] .court-roster-heading p,[data-theme="dark"] .court-matches-heading p{color:#b4c8e1}
+[data-theme="dark"] .court-schedule-head{background:#102b5a}
+[data-theme="dark"] .court-schedule-2 .court-schedule-head{background:#153962}
+[data-theme="dark"] .rating-player-identity>strong,[data-theme="dark"] .rating-player-identity .rating-final b{color:#f2f7ff}
+[data-theme="dark"] .rating-player-identity .rating-final{color:#b4cbe7}
+
+/* Make 6v6 rosters legible on narrow phone screens. */
+body[data-active-tab="courts"] .hero{display:none}
+@media(max-width:650px){.court-roster .teams-grid{grid-template-columns:1fr;padding:12px;gap:9px}.court-roster .team{padding:12px 14px}.court-roster .team-title{font-size:20px}.court-roster .team-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:14px;row-gap:2px;margin:7px 0 0}.court-roster .team-members li{font-size:13px;margin:3px 0}.court-roster .team-members li.sub-member{grid-column:1/-1}.court-roster .court-header{padding:14px 17px}}
