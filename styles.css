@@ -681,3 +681,17 @@ body[data-active-tab="courts"] .hero{display:none}
   #view-leaderboard .ranked-tier-row .ranking-mmr {margin-left:35px;min-width:0;}
   #view-leaderboard .ranked-tier-row .ranking-record {margin-left:auto;}
 }
+
+/* V1.13 — private placement progress and Challenger eligibility */
+.ranking-placement{display:block!important;font-size:10px;line-height:1.35;font-weight:750;white-space:normal;color:var(--subtle, #8795af);margin-top:3px}
+.ranking-placement.is-placing{color:#bc7b13}
+.placement-progress{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin-top:9px}
+.placement-progress span{font-size:11px;line-height:1.5;font-weight:750}
+.placement-status{display:inline-block;border-radius:6px;padding:3px 7px;background:#e4edf8;color:#1e416b}
+.placement-status.is-placing{background:#fff1d7;color:#804900}
+.placement-eligibility{color:#6b8199}
+html[data-theme=dark] .placement-status{background:#24394e;color:#dbeaff}
+html[data-theme=dark] .placement-status.is-placing{background:#49391d;color:#ffd38c}
+html[data-theme=dark] .placement-eligibility{color:#a9bdd0}
+html[data-theme=dark] .ranking-placement.is-placing{color:#ffd38c}
+@media(max-width:550px){.placement-progress{gap:4px 8px}.placement-progress span{font-size:10px}.ranking-placement{font-size:9px}}
