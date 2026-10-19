@@ -571,3 +571,39 @@ body[data-active-tab="courts"] .hero{display:none}
 .ranking-record { white-space:nowrap; }
 .ranking-row { gap:10px; }
 @media(max-width:620px) {.ranking-row {flex-wrap:wrap;} .ranking-mmr { margin-left:0;} }
+
+/* V1.11: accessible private MMR badges in both themes.
+   V1.10 inherited the light --ink variable while keeping a near-white background,
+   causing white-on-white ratings when dark mode was active. */
+#view-leaderboard .ranking-mmr {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-width: 90px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid #c1d4ec;
+  background: #e8f1fd;
+  color: #13365c;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+:root[data-theme="dark"] #view-leaderboard .ranking-mmr {
+  background: #273e5b;
+  border-color: #486b92;
+  color: #f7fbff;
+}
+@media (max-width: 620px) {
+  #view-leaderboard .ranking-mmr {
+    min-width: 84px;
+    font-size: 12px;
+    padding: 7px 9px;
+  }
+}
