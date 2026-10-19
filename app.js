@@ -1,0 +1,262 @@
+(() => {
+  'use strict';
+  const cfg=window.VB_CONFIG||{};
+  const configured=Boolean(cfg.supabaseUrl && cfg.supabaseAnonKey);
+  const demo=!configured;
+  const db=configured&&window.supabase?.createClient(cfg.supabaseUrl,cfg.supabaseAnonKey) || null;
+  const $=s=>document.querySelector(s);
+  const safe=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  const id=()=>globalThis.crypto?.randomUUID?.()||`demo-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const localDate=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;};
+  const niceDate=v=>{if(!v)return '';const [y,m,d]=v.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});};
+  const plural=(n,s)=>`${n} ${s}${n===1?'':'s'}`;
+  const POSITIONS=['Unspecified','Setter','Outside Hitter','Opposite','Middle Blocker','Libero','Defensive Specialist','Utility'];
+  const PRESETS={beginner:800,intermediate:1200,advanced:1600};
+  const positionOptions=(selected='Unspecified',includeAll=false)=>`${includeAll?'<option value="All">All positions</option>':''}${POSITIONS.map(position=>`<option value="${safe(position)}" ${selected===position?'selected':''}>${safe(position)}</option>`).join('')}`;
+
+  const priorityRoster=()=>[...(pub?.roster||[])].sort((a,b)=>(a.rounds_played||0)-(b.rounds_played||0)||String(a.checked_at).localeCompare(String(b.checked_at)));
+
+  let tab='signup',pub=null,admin=null,user=null,adminGranted=false,loading=false,mutating=false;
+  let lastError='',searchText='',lastFlashTimer=null,leaderboardPosition='All';
+  let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
+  let demoData=null;
+  const SAMPLE=[['Alex R.',1460],['Sam D.',1190],['Taylor P.',1030],['Jordan C.',1260],['Morgan B.',910],['Casey G.',1080],['Avery K.',1350],['Riley F.',980],['Jamie L.',820],['Drew T.',1240],['Parker M.',1110],['Cameron S.',1020],['Quinn V.',950],['Reese H.',1380],['Hayden W.',1160],['Blake E.',860],['Rowan A.',1300],['Dakota N.',1000],['Skyler J.',1140],['Kendall O.',930],['Finley Z.',1490],['Marley U.',940],['Emerson Q.',1050],['Robin I.',1220],['Nico J.',1100],['Sydney Y.',940],['Alexis N.',1310],['Ari V.',1180]];
+  function seedDemo(){return {event:{id:id(),title:'Open Volleyball',date:localDate(),team_size:4,round_number:1,duration_minutes:180,status:'open'},archives:[],players:SAMPLE.map(([name,mmr],i)=>({id:id(),name,mmr,position:POSITIONS[1+i%6],wins:0,losses:0})),signups:[],teams:[],matches:[],history:[]};}
+  function readDemo(){try{const s=localStorage.getItem('rallyrank-demo-v1');if(s){demoData=JSON.parse(s);demoData.archives||=[];demoData.players.forEach(p=>p.position||='Unspecified');if(demoData.event){demoData.event.round_number||=1;demoData.event.duration_minutes=180;}return;}}catch(e){}demoData=seedDemo();demoData.signups=demoData.players.slice(0,24).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));storeDemo();}
+  function storeDemo(){try{localStorage.setItem('rallyrank-demo-v1',JSON.stringify(demoData));}catch(e){}}
+  function demoState(){const x=demoData;return {event:x.event?{...x.event,player_count:x.signups.length,capacity:x.event.team_size*6,completed_rounds:x.archives.length}:null,
+    roster:x.signups.map(s=>{const p=x.players.find(p=>p.id===s.player_id);return {id:p.id,name:p.name,checked_at:s.checked_at,team_id:x.teams.find(t=>t.players.some(y=>y.id===p.id))?.id||null,rounds_played:x.archives.filter(a=>a.teams.some(t=>t.players.some(y=>y.id===p.id))).length};}),
+    teams:x.teams,matches:x.matches,leaderboard:demoLeaderboard()};}
+  function demoLeaderboard(){return [...demoData.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name)).map(p=>({id:p.id,name:p.name,position:p.position||'Unspecified',wins:p.wins,losses:p.losses}));}
+  function average(team){const registered=team.players.filter(p=>!p.is_placeholder).map(p=>demoData.players.find(x=>x.id===p.id));if(!registered.length)throw Error('Each team needs a registered player.');return registered.reduce((n,p)=>n+p.mmr,0)/registered.length;}
+  function demoAction(fn){fn();storeDemo();return Promise.resolve(null);}
+  const api={
+    async getPublic(){if(demo)return demoState();const [state,ranks]=await Promise.all([db.rpc('vmm_get_state'),db.rpc('vmm_get_leaderboard')]);if(state.error)throw state.error;if(ranks.error)throw ranks.error;return {...state.data,leaderboard:ranks.data||[]};},
+    async getAdmin(){if(demo)return {...demoState(),players:demoData.players,previous_teams:demoData.archives.at(-1)?.teams.map(t=>t.players.map(p=>p.id))||[]};const {data,error}=await db.rpc('vmm_get_admin_state');if(error)throw error;return data;},
+    async join(name){if(demo)return demoAction(()=>{if(!demoData.event||demoData.event.status!=='open')throw Error('Signups are closed.');const key=name.trim().replace(/\s+/g,' ').toLocaleLowerCase();if(key.length<2||key.length>45)throw Error('Enter a name between 2 and 45 characters.');const p=demoData.players.find(x=>x.name.toLocaleLowerCase()===key);if(!p)throw Error('Player not registered. Please ask an admin to create your profile first.');if(demoData.signups.some(x=>x.player_id===p.id))throw Error('That name is already checked in.');if(demoData.signups.length>=96)throw Error('Session has reached its signup limit.');demoData.signups.push({player_id:p.id,checked_at:new Date().toISOString()});});const {data,error}=await db.rpc('vmm_join_event',{p_name:name});if(error)throw error;if(data==='already_joined')throw Error('That name is already checked in.');},
+    async addPlayer(name,tier,position,checkIn){if(demo)return demoAction(()=>{
+      const clean=name.trim().replace(/\s+/g,' ');
+      if(clean.length<2||clean.length>45||!/[a-z0-9]/i.test(clean))throw Error('Enter a valid name between 2 and 45 characters.');
+      if(!Object.hasOwn(PRESETS,tier)||!POSITIONS.includes(position))throw Error('Choose a skill level and preferred position.');
+      if(demoData.players.some(p=>p.name.toLocaleLowerCase()===clean.toLocaleLowerCase()))throw Error('Player already exists. Use their profile below.');
+      if(checkIn&&demoData.event?.status!=='open')throw Error('Open a session before checking players in.');
+      if(checkIn&&demoData.signups.length>=96)throw Error('Signup limit reached.');
+      const p={id:id(),name:clean,mmr:PRESETS[tier],position,wins:0,losses:0};demoData.players.push(p);
+      if(checkIn)demoData.signups.push({player_id:p.id,checked_at:new Date().toISOString()});
+    });const {error}=await db.rpc('vmm_admin_add_player',{p_name:name,p_tier:tier,p_position:position,p_check_in:checkIn});if(error)throw error;},
+    async checkIn(pid){if(demo)return demoAction(()=>{
+      if(demoData.event?.status!=='open')throw Error('Signups are not open.');
+      if(!demoData.players.some(p=>p.id===pid))throw Error('Player not found.');
+      if(demoData.signups.some(s=>s.player_id===pid))throw Error('Player already checked in.');
+      if(demoData.signups.length>=96)throw Error('Signup limit reached.');
+      demoData.signups.push({player_id:pid,checked_at:new Date().toISOString()});
+    });const {error}=await db.rpc('vmm_admin_check_in_player',{p_player_id:pid});if(error)throw error;},
+    async updatePlayer(pid,mmr,position){if(demo)return demoAction(()=>{
+      const p=demoData.players.find(p=>p.id===pid);if(!p)throw Error('Player not found.');
+      if(!POSITIONS.includes(position)||!Number.isInteger(mmr)||mmr<500||mmr>2500)throw Error('Invalid rating or preferred position.');
+      if(p.mmr!==mmr&&demoData.event?.status==='locked'&&demoData.teams.some(t=>t.players.some(tp=>tp.id===pid)))throw Error('Cannot modify MMR during an active round. Position changes are allowed.');
+      p.mmr=mmr;p.position=position;
+    });const {error}=await db.rpc('vmm_update_player',{p_player_id:pid,p_mmr:mmr,p_position:position});if(error)throw error;},
+    async createEvent(title,date,size){if(demo)return demoAction(()=>{if(demoData.event)throw Error('Finish the existing event first.');demoData.event={id:id(),title,date,team_size:size,round_number:1,duration_minutes:180,status:'open'};demoData.signups=[];demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.archives=[];});const {error}=await db.rpc('vmm_create_event',{p_title:title,p_date:date,p_team_size:size});if(error)throw error;},
+    async setMmr(pid,mmr){if(demo)return demoAction(()=>{if(demoData.event?.status==='locked'&&demoData.teams.some(t=>t.players.some(p=>p.id===pid)))throw Error('Cannot modify a player in an active round.');const p=demoData.players.find(x=>x.id===pid);if(!p)throw Error('Player not found.');p.mmr=mmr;});const {error}=await db.rpc('vmm_set_mmr',{p_player_id:pid,p_mmr:mmr});if(error)throw error;},
+    async removeSignup(eventId,pid){if(demo)return demoAction(()=>{if(demoData.event?.status!=='open')throw Error('Teams are already published.');demoData.signups=demoData.signups.filter(s=>s.player_id!==pid);});const {error}=await db.rpc('vmm_remove_signup',{p_event_id:eventId,p_player_id:pid});if(error)throw error;},
+    async publish(eventId,groups){if(demo)return demoAction(()=>{if(demoData.event?.status!=='open')throw Error('Signups are closed.');if(groups.length!==6)throw Error('Six teams required.');demoData.teams=groups.map((people,i)=>({id:id(),court:Math.floor(i/3)+1,number:i%3+1,players:people.map(p=>({id:p.id,name:p.name,is_placeholder:Boolean(p.is_placeholder)}))}));demoData.matches=[];for(let court=1;court<=2;court++){const [a,b,c]=demoData.teams.filter(t=>t.court===court);demoData.matches.push({id:id(),court,order:1,team_a_id:a.id,team_b_id:b.id,winner_team_id:null,score_a:null,score_b:null,completed_seq:null},{id:id(),court,order:2,team_a_id:null,team_b_id:c.id,winner_team_id:null,score_a:null,score_b:null,completed_seq:null},{id:id(),court,order:3,team_a_id:null,team_b_id:c.id,winner_team_id:null,score_a:null,score_b:null,completed_seq:null});}demoData.event.status='locked';});const {error}=await db.rpc('vmm_publish_teams',{p_event_id:eventId,p_teams:groups.map(g=>g.map(p=>p.id))});if(error)throw error;},
+    async report(mid,winner,scoreA,scoreB){if(demo)return demoAction(()=>{const m=demoData.matches.find(m=>m.id===mid);if(!m||m.winner_team_id||!m.team_a_id||!m.team_b_id)throw Error('Match is not ready.');if(demoData.matches.some(x=>x.court===m.court&&x.order<m.order&&!x.winner_team_id))throw Error('Previous court match is unfinished.');const winning=demoData.teams.find(t=>t.id===winner),losing=demoData.teams.find(t=>t.id===(winner===m.team_a_id?m.team_b_id:m.team_a_id));if(!winning||!losing)throw Error('Invalid winner.');const delta=window.RallyMath.swing(average(winning),average(losing));const changes=[];for(const [team,win] of [[winning,true],[losing,false]])for(const tp of team.players.filter(p=>!p.is_placeholder)){const p=demoData.players.find(x=>x.id===tp.id);changes.push({id:p.id,mmr:p.mmr,wins:p.wins,losses:p.losses});p.mmr=Math.max(500,Math.min(2500,p.mmr+(win?delta:-delta)));if(win)p.wins++;else p.losses++;}m.winner_team_id=winner;m.score_a=scoreA;m.score_b=scoreB;m.completed_seq=demoData.history.length+1;demoData.history.push({mid,changes});if(m.order===1){demoData.matches.find(x=>x.court===m.court&&x.order===2).team_a_id=winner;demoData.matches.find(x=>x.court===m.court&&x.order===3).team_a_id=losing.id;}});const {error}=await db.rpc('vmm_report_result',{p_match_id:mid,p_winner_team_id:winner,p_score_a:scoreA,p_score_b:scoreB});if(error)throw error;},
+    async undo(eventId){if(demo)return demoAction(()=>{const previous=demoData.history.pop();if(!previous)throw Error('Nothing to undo.');for(const ch of previous.changes){const p=demoData.players.find(x=>x.id===ch.id);Object.assign(p,{mmr:ch.mmr,wins:ch.wins,losses:ch.losses});}const m=demoData.matches.find(x=>x.id===previous.mid);m.winner_team_id=null;m.score_a=null;m.score_b=null;m.completed_seq=null;if(m.order===1){demoData.matches.find(x=>x.court===m.court&&x.order===2).team_a_id=null;demoData.matches.find(x=>x.court===m.court&&x.order===3).team_a_id=null;}});const {error}=await db.rpc('vmm_undo_last_result',{p_event_id:eventId});if(error)throw error;},
+    async resetRound(eventId){if(demo)return demoAction(()=>{if(demoData.history.length)throw Error('Undo results before reshuffling.');demoData.teams=[];demoData.matches=[];demoData.event.status='open';});const {error}=await db.rpc('vmm_reset_round',{p_event_id:eventId});if(error)throw error;},
+    async nextRound(eventId){if(demo)return demoAction(()=>{
+      if(!demoData.event||demoData.event.id!==eventId||demoData.event.status!=='locked'||demoData.matches.length!==6||demoData.matches.some(m=>!m.winner_team_id))throw Error('Complete all six matches before starting another round.');
+      demoData.archives.push({round:demoData.event.round_number,teams:structuredClone(demoData.teams),matches:structuredClone(demoData.matches),changes:structuredClone(demoData.history)});
+      demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.event.round_number++;demoData.event.status='open';
+    });const {error}=await db.rpc('vmm_advance_round',{p_event_id:eventId});if(error)throw error;},
+    async closeEvent(eventId){if(demo)return demoAction(()=>{demoData.event=null;demoData.signups=[];demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.archives=[];});const {error}=await db.rpc('vmm_close_event',{p_event_id:eventId});if(error)throw error;}
+  };
+  function flash(message,error=false){const el=$('#flash');el.hidden=false;el.textContent=message;el.className='flash'+(error?' error':'');if(lastFlashTimer)clearTimeout(lastFlashTimer);lastFlashTimer=setTimeout(()=>el.hidden=true,6500);}
+  function errText(e){return e?.message||String(e||'Something went wrong.');}
+  async function refresh(){if(loading)return;loading=true;try{const next=await api.getPublic();pub=next;if(demo){admin=await api.getAdmin();adminGranted=true;}else if(user){try{admin=await api.getAdmin();adminGranted=true;}catch(e){adminGranted=false;admin=null;if(tab==='admin'&&lastError!=='admin-denied'){flash('Signed in, but this account is not listed as an admin.',true);lastError='admin-denied';}}}else{admin=null;adminGranted=false;}if(adminGranted||!user)lastError='';render();$('#connection-status').textContent=demo?'LOCAL ONLY':'Synced';}catch(e){if(lastError!==errText(e)){flash(`Connection error: ${errText(e)}`,true);lastError=errText(e);}$('#connection-status').textContent='Connection failed';}finally{loading=false;}}
+  function switchTab(next){tab=next;document.querySelectorAll('.nav-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${tab}`));render();window.location.hash=tab;}
+  function teamName(t){return t?`Team ${t.number}`:'TBD';}
+  function teamById(teamId){return pub?.teams?.find(t=>t.id===teamId)||null;}
+  function statusPill(text,cls=''){return `<span class="pill ${cls}">${safe(text)}</span>`;}
+  function render(){if(!pub)return;const e=pub.event;$('#event-status').textContent=e?`${e.status==='open'?'SIGNUPS OPEN':'MATCHES IN PROGRESS'} · ${niceDate(e.date).toUpperCase()} · ROUND ${e.round_number||1}`:'VOLLEYBALL MATCHMAKER';$('#hero-title').innerHTML=e?`${safe(e.title)}<br/><em>${e.status==='open'?'Find your squad.':'Game on.'}</em>`:'Everybody plays.<br/><em>Every point counts.</em>';$('#hero-description').textContent=e?`Two courts. Three teams per court. ${e.team_size} spots per team, with unrated sub placeholders when needed. Every team gets two games.`:'Create balanced volleyball teams, track wins, and climb the skill-based leaderboard.';$('#mode-indicator').textContent=demo?'DEMO MODE':'LIVE SYNC';$('#demo-banner').hidden=!demo;
+$('#signup-body').innerHTML=renderSignup();$('#courts-body').innerHTML=renderCourts(false);$('#leaderboard-body').innerHTML=renderLeaderboard();$('#admin-body').innerHTML=renderAdmin();}
+  function renderSignup(){const e=pub.event;if(!e)return `<div class="empty"><span class="empty-icon">🏐</span><strong>No open session</strong><p>An admin needs to create a new volleyball session before players can check in.</p></div>`;
+    const count=pub.roster.length,cap=e.capacity,slots=Math.max(0,cap-count);const inNext=new Set(priorityRoster().slice(0,cap).map(p=>p.id));const checked=count>=cap;const status=e.status==='open'?'Open for check-in':'Teams are already locked';
+    const stats=`<div class="stat-row"><div class="stat"><span class="value">${count}</span><span class="label">Checked in</span></div><div class="stat highlight"><span class="value">${e.status==='locked'?'✓':slots}</span><span class="label">${e.status==='locked'?'Teams built':'Spots to fill'}</span></div><div class="stat"><span class="value">${e.round_number||1}</span><span class="label">Current round</span></div></div>`;
+    const roster=pub.roster.map((p,i)=>{const t=teamById(p.team_id);const status=t?statusPill(`C${t.court} · T${t.number}`):(e.status==='locked'||!inNext.has(p.id))?statusPill('Waitlist','wait'):statusPill('Checked in','muted');return `<div class="roster-item"><span class="roster-num">${i+1}</span><span class="roster-name">${safe(p.name)}</span>${status}</div>`;}).join('');
+    return `${stats}<div class="split"><section class="panel"><div class="panel-head"><h3 id="signup-title">Player check-in</h3>${statusPill(status,e.status==='open'?'':'muted')}</div><p class="subtle">Enter the name your admin registered. Your skill rating stays private and is used to balance teams.</p><form id="join-form" class="form-stack"><div><label class="label-input" for="player-name">Your name</label><input id="player-name" class="field" name="name" type="text" placeholder="First name + last initial" minlength="2" maxlength="45" autocomplete="name" required ${e.status==='locked'?'disabled':''}/></div><button type="submit" class="btn btn-primary btn-full" ${e.status==='locked'?'disabled':''}>${e.status==='locked'?'Check-in closed':'Check in →'}</button></form><div class="divider"></div><div class="small-caps">Session progress</div><div class="progress-wrap"><span style="width:${Math.min(100,Math.round(count/cap*100))}%"></span></div><div class="subtle">${e.status==='locked'?'Matchups are published. Follow the Live Courts tab.':checked?'Six full teams can be made. Extra players rotate in on later rounds.':count>=6?`Teams can be made now with ${plural(slots,'unrated sub placeholder')}.`: `${plural(6-count,'more registered player')} needed to build six teams.`}</div><div class="hint" style="margin-top:17px">An admin must create your player profile before your first check-in. Returning players keep their saved MMR. Use your registered name to join.</div></section><section class="panel"><div class="panel-head"><h3>Checked-in players</h3><span class="small-caps">${count} total</span></div>${roster?`<div class="roster-list">${roster}</div>`:'<div class="empty"><strong>No players yet</strong><p>Be the first to check in.</p></div>'}</section></div>`;
+  }
+  function renderLeaderboard(){
+    const ranked=pub.leaderboard||[];
+    const filtered=ranked.filter(p=>leaderboardPosition==='All'||(p.position||'Unspecified')===leaderboardPosition);
+    const positionCounts=POSITIONS.map(p=>({name:p,count:ranked.filter(r=>(r.position||'Unspecified')===p).length}));
+    const sumWins=ranked.reduce((sum,p)=>sum+(p.wins||0),0);
+    const list=filtered.map((p,i)=>{
+      const adminPlayer=adminGranted?admin?.players?.find(ap=>ap.id===p.id):null;
+      return `<div class="ranking-row"><div class="ranking-number ${i<3?'top-rank':''}">${i+1}</div><div class="ranking-person"><strong>${safe(p.name)}</strong><span>${safe(p.position||'Unspecified')}</span></div><div class="ranking-record">${p.wins||0}W <span>·</span> ${p.losses||0}L</div>${adminPlayer?`<div class="ranking-mmr">${adminPlayer.mmr} <small>MMR</small></div>`:''}</div>`;
+    }).join('');
+    return `<div class="section-top"><div><h2 id="leaderboard-title" class="section-title">Player leaderboards</h2><p class="section-sub">Ranked by overall MMR. Filter by preferred position to compare players in the same role.</p></div></div>
+      <section class="panel leaderboard-panel">
+        <div class="leaderboard-summary"><div><span class="mini-label">Registered players</span><strong>${ranked.length}</strong></div><div><span class="mini-label">Matches recorded</span><strong>${Math.round(sumWins)}</strong></div><div><span class="mini-label">Selected position</span><strong>${leaderboardPosition==='All'?'All':filtered.length}</strong></div></div>
+        <div class="leaderboard-toolbar"><label class="label-input" for="leaderboard-filter">Preferred position</label><select id="leaderboard-filter" class="field">${positionOptions(leaderboardPosition,true)}</select></div>
+        <div class="position-summary">${positionCounts.filter(x=>x.count).map(x=>`<span>${safe(x.name)} <b>${x.count}</b></span>`).join('')}</div>
+        <div class="ranking-list">${list||'<div class="empty"><strong>No players in this position yet</strong><p>Admins can assign a preferred position when creating or editing a player.</p></div>'}</div>
+        <p class="subtle leaderboard-note">Position is for organizing leaderboards only. Teams and rating changes are based on overall skill, not positions. ${adminGranted?'As admin, you can also see exact MMR values.':'MMR values are private; rank order, position and match record are visible.'}</p>
+      </section>`;
+  }
+  function renderMatch(m,adminControls){const ta=teamById(m.team_a_id),tb=teamById(m.team_b_id);const done=Boolean(m.winner_team_id),previousDone=pub.matches.every(prev=>prev.court!==m.court||prev.order>=m.order||Boolean(prev.winner_team_id)),ready=Boolean(ta&&tb&&!done&&previousDone);let stateLabel=done?'FINAL':ready?'READY':ta&&tb?'WAITING PREVIOUS MATCH':'AWAITING OPENING RESULT';const leftLabel=ta?teamName(ta):m.order===2?'Winner of match 1':'Loser of match 1';const rightLabel=teamName(tb);
+    let controls='';if(adminControls&&ready){controls=`<div class="match-controls" data-mid="${safe(m.id)}"><div class="mini-label">Optional final scores</div><div class="score-fields"><label>${safe(leftLabel)}<input class="field" name="score-a" inputmode="numeric" type="number" min="0" max="99" placeholder="Score" /></label><label>${safe(rightLabel)}<input class="field" name="score-b" inputmode="numeric" type="number" min="0" max="99" placeholder="Score" /></label></div><div class="button-row"><button class="btn btn-primary btn-small" data-action="win" data-match="${safe(m.id)}" data-team="${safe(ta.id)}">${safe(leftLabel)} wins</button><button class="btn btn-secondary btn-small" data-action="win" data-match="${safe(m.id)}" data-team="${safe(tb.id)}">${safe(rightLabel)} wins</button></div></div>`;}
+    return `<article class="match ${done?'match-done':ready?'':'match-waiting'}"><div class="match-head"><span>Match ${m.order}</span>${statusPill(stateLabel,done?'win':'muted')}</div><div class="match-line"><span class="match-side ${done&&m.winner_team_id===m.team_a_id?'winner':''}">${safe(leftLabel)}</span><span class="vs">${done&&m.score_a!==null?`${m.score_a} : ${m.score_b}`:'VS'}</span><span class="match-side right ${done&&m.winner_team_id===m.team_b_id?'winner':''}">${safe(rightLabel)}</span></div>${controls}</article>`;
+  }
+  function renderCourts(adminControls){const e=pub.event;const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">${adminControls?'Record match results':'Live court rotations'}</h2><p class="section-sub">Each court: 1 vs 2 → winner vs 3 → loser vs 3. Two games for every team, then rebalance for another round.</p></div>${!adminControls?'<button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button>':''}</div>`;
+    if(!e)return `${title}<div class="empty"><strong>No active session</strong><p>Once check-in opens, the court schedule will show here.</p></div>`;
+    if(!pub.teams.length)return `${title}<div class="empty"><span class="empty-icon">🏐</span><strong>Waiting for team assignments</strong><p>Once at least six real players have checked in, the admin can create six balanced teams and fill missing spots with unrated sub placeholders.</p></div>`;
+    const cards=[1,2].map(court=>{const teams=pub.teams.filter(t=>t.court===court).sort((a,b)=>a.number-b.number);const matches=pub.matches.filter(m=>m.court===court).sort((a,b)=>a.order-b.order);const gamesDone=matches.filter(m=>m.winner_team_id).length;
+      return `<section class="court"><div class="court-header"><div><h3>Court 0${court}</h3><p>${gamesDone}/3 matches completed</p></div>${statusPill(gamesDone===3?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===3?'win':'muted')}</div><div class="teams-grid">${teams.map(t=>{const a=admin?.players?.filter(p=>t.players.some(tp=>tp.id===p.id))||[];const avg=a.length?`<span class="team-avg">Avg MMR ${Math.round(a.reduce((s,p)=>s+p.mmr,0)/a.length)}</span>`:'';return `<div class="team"><div class="team-title">${safe(teamName(t))}</div><ul class="team-members">${t.players.map(p=>p.is_placeholder?'<li class="sub-member"><span>✳ Sub needed</span><small>Unrated · no MMR</small></li>':`<li>${safe(p.name)}</li>`).join('')}</ul>${adminControls?avg:''}</div>`;}).join('')}</div><div class="match-list">${matches.map(m=>renderMatch(m,adminControls)).join('')}</div></section>`;
+    });return `${title}<div class="courts-layout">${cards.join('')}</div><div class="hint" style="margin-top:15px">Each team plays two matches. Real players gain or lose MMR; temporary Sub Needed slots have no rating, no win/loss history, and never appear on leaderboards.</div>`;
+  }
+  // Attendance search uses admin-only profile data, never a public player lookup.
+  const nameKey=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase().trim();
+  function attendanceMatches(){
+    if(!adminGranted || !admin?.players || !attendanceSearch.trim())return [];
+    const key=nameKey(attendanceSearch);
+    const checked=new Set((pub?.roster||[]).map(p=>p.id));
+    return admin.players.filter(p=>nameKey(p.name).includes(key)).sort((a,b)=>
+      Number(checked.has(a.id))-Number(checked.has(b.id))||
+      Number(!nameKey(a.name).startsWith(key))-Number(!nameKey(b.name).startsWith(key))||
+      a.name.localeCompare(b.name));
+  }
+  function attendanceSuggestions(){
+    if(!attendanceDropdownOpen || !pub?.event || pub.event.status!=='open' || !attendanceSearch.trim())return '';
+    const matches=attendanceMatches(),top=matches.slice(0,10);
+    if(!top.length)return '<div class="attendance-no-match">No registered players match that name. Create a profile below first.</div>';
+    const checked=new Set(pub.roster.map(p=>p.id));
+    return `${top.map((p,i)=>{
+      const present=checked.has(p.id);
+      return `<button id="attendance-option-${i}" class="attendance-option ${i===attendanceActive?'selected':''}" type="button" role="option" aria-selected="${i===attendanceActive}" data-action="attendance-select" data-player="${safe(p.id)}" ${present?'disabled':''}>
+        <span class="attendance-option-main"><strong>${safe(p.name)}</strong><small>${safe(p.position||'Unspecified')}</small></span>
+        <span class="attendance-option-action ${present?'already-here':''}">${present?'✓ Here':'＋ Check in'}</span>
+      </button>`;
+    }).join('')}${matches.length>top.length?`<div class="attendance-results-note">Showing 10 of ${matches.length} matches. Keep typing to narrow the list.</div>`:''}`;
+  }
+  function updateAttendanceSuggestions(){
+    const input=$('#attendance-search'),result=$('#attendance-results');
+    if(!input || !result)return;
+    const visible=attendanceDropdownOpen&&Boolean(attendanceSearch.trim())&&pub?.event?.status==='open';
+    result.hidden=!visible;
+    result.innerHTML=visible?attendanceSuggestions():'';
+    input.setAttribute('aria-expanded',String(visible));
+    const option=$(`#attendance-option-${attendanceActive}`);
+    if(option && !option.disabled)input.setAttribute('aria-activedescendant',option.id);
+    else input.removeAttribute('aria-activedescendant');
+  }
+  function renderAttendance(){
+    const e=pub?.event;
+    if(!e)return '';
+    const editable=e.status==='open',checked=pub.roster||[],all=admin?.players||[],checkedIds=new Set(checked.map(p=>p.id));
+    const here=checked.slice().sort((a,b)=>a.name.localeCompare(b.name));
+    const checkedList=here.length?here.map(p=>`<div class="attendance-person"><div class="attendance-person-info"><span class="attendance-person-name">${safe(p.name)}</span><span class="attendance-person-position">${safe(all.find(a=>a.id===p.id)?.position||'Unspecified')}</span></div>${editable?`<button class="attendance-remove" type="button" data-action="attendance-remove" data-player="${safe(p.id)}" aria-label="Remove ${safe(p.name)} from check-in">Remove</button>`:'<span class="attendance-here-mark">✓ Here</span>'}</div>`).join(''):'<div class="attendance-no-checkins">Nobody has checked in yet. Find a registered player above.</div>';
+    return `<section class="panel admin-attendance" id="admin-attendance"><div class="panel-head"><h3>✓ Who showed up?</h3>${statusPill(editable?'Taking attendance':'Attendance locked',editable?'win':'muted')}</div>
+      <p class="subtle">Check in players from your saved profiles. Only checked-in players are eligible for the next set of balanced teams.</p>
+      <div class="attendance-stats"><div><strong>${checked.length}</strong><span>Here today</span></div><div><strong>${Math.max(0,all.length-checked.length)}</strong><span>Not checked in</span></div><div><strong>${Math.max(0,e.capacity-checked.length)}</strong><span>Open team spots</span></div></div>
+      ${editable?`<div class="attendance-find"><label class="label-input" for="attendance-search">Find a player to check in</label><div class="attendance-search-wrap"><span class="attendance-search-icon" aria-hidden="true">⌕</span><input id="attendance-search" type="search" class="field" placeholder="Type any part of a name…" value="${safe(attendanceSearch)}" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen&&attendanceSearch.trim())}" role="combobox" aria-label="Find registered player" /><div class="attendance-results" id="attendance-results" role="listbox" aria-label="Matching player profiles" ${attendanceDropdownOpen&&attendanceSearch.trim()?'':'hidden'}>${attendanceSuggestions()}</div></div><p class="attendance-search-hint">Matches appear as you type. Tap <strong>＋ Check in</strong> or use ↓ and Enter.</p></div>`:'<div class="hint">Teams are currently playing. Attendance changes reopen after this round ends.</div>'}
+      <div class="attendance-list-head"><div><h4>Checked-in players</h4><span class="small-caps">${here.length} of ${all.length} profiles</span></div>${editable?'<span class="attendance-hint">Tap Remove if someone leaves</span>':''}</div>
+      <div class="attendance-checked-list">${checkedList}</div>
+    </section>`;
+  }
+  function renderAddPlayerForm(){const active=pub.event?.status==='open';return `<section class="panel admin-section admin-add-player"><div class="panel-head"><h3>＋ Add a player</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Set the player's initial skill and preferred position once. Position only affects leaderboard categories, never matchmaking.</p>
+      <form id="add-player-form" class="form-stack">
+        <div><label class="label-input" for="add-name">Player name</label><input class="field" id="add-name" name="name" placeholder="First name + last initial" minlength="2" maxlength="45" autocomplete="off" required /></div>
+        <div class="form-two-columns"><div><label class="label-input" for="add-tier">Initial skill level</label><select class="field" name="tier" id="add-tier"><option value="beginner">Beginner · 800 MMR</option><option value="intermediate" selected>Intermediate · 1200 MMR</option><option value="advanced">Advanced · 1600 MMR</option></select></div>
+        <div><label class="label-input" for="add-position">Preferred position</label><select class="field" name="position" id="add-position">${positionOptions('Unspecified')}</select></div></div>
+        ${active?'<label class="check-inline"><input type="checkbox" name="checkin" checked /> Check into the current session now</label>':''}
+        <button class="btn btn-primary btn-full" type="submit">＋ Create player profile</button>
+      </form></section>`;}
+  function renderAdmin(){if(!demo&&!user)return `<section class="panel" style="max-width:500px;margin:0 auto"><div class="panel-head"><h3 id="admin-title">Admin sign-in</h3>${statusPill('Private','muted')}</div><p class="subtle">Only approved admin accounts can create player profiles, see MMR, edit preferred positions, or record results.</p><form id="login-form" class="form-stack"><div><label for="admin-email" class="label-input">Email</label><input id="admin-email" class="field" type="email" name="email" placeholder="you@example.com" autocomplete="username" required /></div><div><label for="admin-password" class="label-input">Password</label><input id="admin-password" class="field" type="password" name="password" autocomplete="current-password" required /></div><button type="submit" class="btn btn-primary btn-full">Sign in securely</button></form><p class="subtle">Admins are approved in Supabase, not through a hardcoded website password.</p></section>`;
+    if(!adminGranted)return `<section class="panel"><div class="panel-head"><h3 id="admin-title">Admin permission required</h3></div><p>Your Supabase account is signed in but is not authorized in <code>vmm_admins</code>. Ask the database owner to add this account.</p><button data-action="logout" class="btn btn-secondary">Sign out</button></section>`;
+    const e=pub.event;const header=`<div class="section-top"><div><h2 id="admin-title" class="section-title">Admin control center</h2><p class="section-sub">${demo?'Demo controls: no account needed':`Signed in as ${safe(user?.email||'admin')}`}</p></div>${!demo?'<button class="btn btn-small btn-secondary" data-action="logout">Sign out</button>':''}</div>`;
+    if(!e)return `${header}<div class="admin-grid"><section class="panel"><div class="panel-head"><h3>Create a volleyball session</h3>${statusPill('No active session','muted')}</div>${renderCreateForm()}</section>${renderAddPlayerForm()}</div><section class="panel admin-panel"><div class="panel-head"><h3>Player profiles</h3><span class="small-caps">${admin?.players?.length||0} total</span></div>${renderPlayerRatings(false)}</section>`;
+    const slots=Math.max(0,e.capacity-pub.roster.length);const canGenerate=pub.roster.length>=6;const results=pub.matches.filter(m=>m.winner_team_id).length;const roundComplete=results===6;
+    const controls=`<section class="panel admin-section"><div class="panel-head"><h3>Session management</h3>${statusPill(e.status==='open'?'Accepting players':'Matches live',e.status==='open'?'':'muted')}</div><div class="meta-line"><span>${safe(e.title)}</span><span>•</span><span>${safe(niceDate(e.date))}</span><span>•</span><span>${e.team_size}v${e.team_size}</span><span>•</span><span>Round ${e.round_number||1}</span><span>•</span><span>${pub.roster.length}/${e.capacity} checked in</span></div>${e.status==='open'?`<p class="subtle">${!canGenerate?`Need ${plural(6-pub.roster.length,'more registered player')} before making six teams.`:slots?`${plural(slots,'open spot')} will be filled with unrated Sub Needed placeholders. A random sub can play without gaining or losing MMR.`:'Ready to balance six full teams. Existing ratings carry over from earlier rounds.'}</p><button type="button" class="btn btn-primary" data-action="generate" ${!canGenerate?'disabled':''}>⚡ Balance ${e.round_number>1?'next-round':'first-round'} teams${slots?` · ${slots} sub ${slots===1?'slot':'slots'}`:''}</button>`:`<p class="subtle">${results}/6 matches complete this round. For evenly matched teams, wins change MMR by roughly +12/−12 per player.</p>${roundComplete?`<div class="hint" style="margin:13px 0">All six games finished! Start another balanced round when everyone is ready.</div><button class="btn btn-primary btn-full" data-action="next-round">↻ Start next balanced round →</button>`:''}<div class="button-row"><button type="button" class="btn btn-secondary btn-small" data-action="undo" ${results===0?'disabled':''}>↶ Undo latest result</button><button type="button" class="btn btn-secondary btn-small" data-action="reset" ${results?'disabled':''}>↻ Reshuffle teams</button></div>`}<div class="divider"></div><button type="button" class="btn btn-danger btn-small" data-action="close">Finish this session</button><div class="warning">Finishing this session allows another to be created. Ratings and player profiles carry forward.</div></section>`;
+    const ratings=`<section class="panel admin-section"><div class="panel-head"><h3>Edit player profiles</h3><span class="small-caps">${admin?.players?.length||0} registered</span></div><p class="subtle">Manage existing players, update preferred positions, set exact MMR, and check returning players into a session. Changing positions never changes MMR.</p>${renderPlayerRatings(false)}</section>`;
+    return `${header}${renderAttendance()}<div class="admin-grid"><div>${controls}${renderAddPlayerForm()}</div><div>${ratings}</div></div>${e.status==='locked'?`<div class="admin-panel">${renderCourts(true)}</div>`:''}`;
+  }
+  function renderCreateForm(){return `<form id="create-form" class="form-stack"><div><label class="label-input" for="new-title">Session name</label><input class="field" id="new-title" name="title" value="Open Volleyball" required minlength="3" maxlength="70" /></div><div><label class="label-input" for="new-date">Session date</label><input class="field" id="new-date" name="date" type="date" value="${localDate()}" required /></div><div><label class="label-input" for="new-size">Players per team</label><select class="field" name="size" id="new-size"><option value="2">2v2 · 12 players</option><option value="3">3v3 · 18 players</option><option value="4" selected>4v4 · 24 players</option><option value="5">5v5 · 30 players</option><option value="6">6v6 · 36 players</option></select></div><div class="hint">One session can include multiple balanced rounds. Each round has six teams, three per court, with two matches per team. Games and wait times depend on how long matches take.</div><button type="submit" class="btn btn-primary">Open signups →</button></form>`;}
+  function renderPlayerRatings(currentOnly){
+    const all=admin?.players||[];const e=pub.event;const activeSet=new Set(pub.roster.map(p=>p.id));
+    const arr=(currentOnly?all.filter(p=>activeSet.has(p.id)):all).sort((a,b)=>a.name.localeCompare(b.name));
+    if(!arr.length)return '<div class="empty"><strong>No players yet</strong><p>Create your first player profile with the form above.</p></div>';
+    const playerCards=arr.map(p=>{
+      const locked=e?.status==='locked'&&pub.teams.some(t=>t.players.some(tp=>tp.id===p.id));
+      const checked=activeSet.has(p.id);
+      return `<div class="player-edit" data-name="${safe(p.name.toLowerCase())}"><div class="player-edit-info"><div class="player-edit-name">${safe(p.name)} ${checked?statusPill('Checked in','win'):''}</div><div class="player-edit-record">${p.wins}W / ${p.losses}L · ${safe(p.position||'Unspecified')}</div></div>
+        <div class="profile-controls"><div class="profile-selects"><label>Preferred position<select class="profile-position field" aria-label="Position for ${safe(p.name)}">${positionOptions(p.position||'Unspecified')}</select></label><label>Skill preset<select class="tier-preset field" aria-label="Skill preset for ${safe(p.name)}" ${locked?'disabled':''}><option value="">Keep rating</option><option value="800">Beginner</option><option value="1200">Intermediate</option><option value="1600">Advanced</option></select></label><label>MMR<input class="profile-mmr field" aria-label="MMR for ${safe(p.name)}" type="number" min="500" max="2500" step="1" value="${p.mmr}" ${locked?'disabled':''}/></label></div>
+        <div class="button-row"><button class="btn btn-small btn-secondary save-profile" data-action="save-profile" data-player="${safe(p.id)}">Save profile</button>${e?.status==='open'?(checked?`<button class="btn btn-small btn-danger" data-action="remove-signup" data-player="${safe(p.id)}">Remove check-in</button>`:`<button class="btn btn-small btn-primary" data-action="checkin-player" data-player="${safe(p.id)}">＋ Check in</button>`):''}</div></div></div>`;
+    }).join('');return `<div class="form-stack"><label class="label-input" for="player-search">Find player</label><input class="field" id="player-search" type="search" placeholder="Search by name" value="${safe(searchText)}" /></div><div class="admin-roster" style="margin-top:15px">${playerCards}</div>`;
+  }
+  async function act(job,message){if(mutating)return false;mutating=true;try{await job();flash(message);await refresh();return true;}catch(e){flash(errText(e),true);return false;}finally{mutating=false;}}
+  async function handleGenerate(){const e=pub.event;if(!e||!admin)return;const players=priorityRoster().slice(0,e.capacity).map(r=>admin.players.find(p=>p.id===r.id));if(players.some(p=>!p)){flash('Unable to load player ratings. Refresh first.',true);return;}const groups=window.RallyMath.makeTeams(players,e.team_size,admin.previous_teams||[]);const range=window.RallyMath.spread(groups);const missing=groups.flat().filter(p=>p.is_placeholder).length;const selected=groups.flat().filter(p=>!p.is_placeholder).length;if(!confirm(`Publish six balanced teams for round ${e.round_number||1}?\n\n${selected} registered players · ${missing} unrated sub ${missing===1?'slot':'slots'}.\nRegistered-player average MMR spread: ${range} points.\nRecent teammates are separated when possible.\n\nSub placeholders NEVER gain/lose MMR and do not appear on the leaderboard. The ${selected} selected players have the fewest completed rounds (check-in order breaks ties).`))return;await act(()=>api.publish(e.id,groups),'Balanced teams published to both courts. Unrated sub spots are clearly marked.');}
+  async function handleWin(btn){const match=pub.matches.find(m=>m.id===btn.dataset.match);if(!match)return;const t=teamById(btn.dataset.team);const form=btn.closest('.match-controls');const a=form?.querySelector('[name=score-a]').value?.trim()||'',b=form?.querySelector('[name=score-b]').value?.trim()||'';let sa=null,sb=null;if(Boolean(a)!==Boolean(b)){flash('Enter both scores, or leave both empty.',true);return;}if(a&&b){sa=Number(a);sb=Number(b);if(!Number.isInteger(sa)||!Number.isInteger(sb)||sa<0||sb<0||sa>99||sb>99||sa===sb){flash('Use two different scores between 0 and 99.',true);return;}const selectedIsA=t.id===match.team_a_id;if((selectedIsA&&sa<=sb)||(!selectedIsA&&sb<=sa)){flash('Selected winning team must have the higher score.',true);return;}}
+    if(!confirm(`Record ${teamName(t)} as the winner on Court ${match.court}, Match ${match.order}?\nOnly the registered players will gain or lose MMR; unrated sub placeholders are ignored.`))return;await act(()=>api.report(match.id,t.id,sa,sb),`${teamName(t)} victory recorded. Ratings updated.`);}
+  document.addEventListener('submit',async ev=>{const form=ev.target;if(!['join-form','login-form','create-form','add-player-form'].includes(form.id))return;ev.preventDefault();const values=new FormData(form);if(form.id==='join-form'){const name=String(values.get('name')||'').trim();await act(()=>api.join(name),`${name} checked in successfully!`);}else if(form.id==='add-player-form'){const name=String(values.get('name')||'').trim(),tier=String(values.get('tier')||''),position=String(values.get('position')||''),checkIn=values.get('checkin')==='on';await act(()=>api.addPlayer(name,tier,position,checkIn),`${name} added${checkIn?' and checked in':''}.`);}else if(form.id==='create-form'){const title=String(values.get('title')||'').trim(),date=String(values.get('date')||''),size=Number(values.get('size'));await act(()=>api.createEvent(title,date,size),'Session created. Check-in is open.');}else{if(!db){flash('Add your Supabase configuration first.',true);return;}try{const {data,error}=await db.auth.signInWithPassword({email:String(values.get('email')),password:String(values.get('password'))});if(error)throw error;user=data.user;await refresh();if(adminGranted)flash('Admin signed in.');}catch(e){flash(errText(e),true);}}});
+  document.addEventListener('click',async ev=>{const nav=ev.target.closest('[data-tab]');if(nav){switchTab(nav.dataset.tab);return;}const btn=ev.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action;switch(action){
+    case 'refresh':await refresh();break;
+    case 'generate':await handleGenerate();break;
+    case 'win':await handleWin(btn);break;
+    case 'save-profile':{const pid=btn.dataset.player;const card=btn.closest('.player-edit');const mmr=Number(card.querySelector('.profile-mmr').value);const position=card.querySelector('.profile-position').value;if(!Number.isInteger(mmr)||mmr<500||mmr>2500||!POSITIONS.includes(position)){flash('Choose a valid position and MMR between 500 and 2500.',true);return;}await act(()=>api.updatePlayer(pid,mmr,position),'Player profile saved.');break;}
+    case 'attendance-select':{
+      if(btn.disabled||!adminGranted||pub?.event?.status!=='open')break;
+      const player=admin.players.find(p=>p.id===btn.dataset.player);if(!player)break;
+      if(pub.roster.some(p=>p.id===player.id))break;
+      const success=await act(()=>api.checkIn(player.id),`${player.name} checked in.`);
+      if(success){attendanceSearch='';attendanceDropdownOpen=false;attendanceActive=0;const input=$('#attendance-search');if(input){input.value='';input.focus();updateAttendanceSuggestions();}}
+      break;
+    }
+    case 'attendance-remove':{
+      if(!adminGranted||pub?.event?.status!=='open')break;
+      const player=admin.players.find(p=>p.id===btn.dataset.player);
+      if(confirm(`Remove ${player?.name||'this player'} from today's attendance? Their profile and rating will stay saved.`)){
+        const success=await act(()=>api.removeSignup(pub.event.id,btn.dataset.player),`${player?.name||'Player'} removed from check-in.`);
+        if(success&&attendanceSearch.trim()){attendanceDropdownOpen=true;updateAttendanceSuggestions();}
+      }
+      break;
+    }
+    case 'checkin-player':{const player=admin.players.find(p=>p.id===btn.dataset.player);await act(()=>api.checkIn(btn.dataset.player),`${player?.name||'Player'} checked in.`);break;}
+    case 'remove-signup':{const player=admin.players.find(p=>p.id===btn.dataset.player);if(confirm(`Remove ${player?.name||'this player'} from the current signup? Their MMR will be kept.`))await act(()=>api.removeSignup(pub.event.id,btn.dataset.player),'Player removed from this signup.');break;}
+    case 'next-round':if(confirm('Archive all six completed matches and rebuild different balanced teams for another round? Ratings and the night’s results will be preserved.'))await act(()=>api.nextRound(pub.event.id),'Round archived. Check in or remove players, then generate fresh balanced teams.');break;
+    case 'undo':if(confirm('Undo the latest recorded result and restore the previous ratings?'))await act(()=>api.undo(pub.event.id),'Latest match result undone.');break;
+    case 'reset':if(confirm('Erase team assignments and reopen check-in? No results can be recorded.'))await act(()=>api.resetRound(pub.event.id),'Teams reset. You can rebalance and publish again.');break;
+    case 'close':if(confirm('Finish this session? Rankings persist, but the live court display will be cleared.'))await act(()=>api.closeEvent(pub.event.id),'Session finished. You can create another.');break;
+    case 'logout':if(db)await db.auth.signOut();user=null;admin=null;adminGranted=false;await refresh();flash('Signed out.');break;
+  }});
+  document.addEventListener('change',ev=>{if(ev.target?.classList?.contains('tier-preset')&&ev.target.value){ev.target.closest('.profile-controls').querySelector('.profile-mmr').value=ev.target.value;}if(ev.target?.id==='leaderboard-filter'){leaderboardPosition=ev.target.value;$('#leaderboard-body').innerHTML=renderLeaderboard();}});
+  document.addEventListener('input',ev=>{if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=Boolean(attendanceSearch.trim());attendanceActive=0;updateAttendanceSuggestions();}if(ev.target?.id==='player-search'){searchText=ev.target.value.toLowerCase().trim();document.querySelectorAll('.player-edit').forEach(el=>el.hidden=!el.dataset.name.includes(searchText));}});
+  document.addEventListener('keydown',ev=>{
+    if(ev.target?.id!=='attendance-search')return;
+    if(ev.key==='Escape'){attendanceDropdownOpen=false;updateAttendanceSuggestions();return;}
+    if(!attendanceSearch.trim() || !pub?.event || pub.event.status!=='open')return;
+    const choices=attendanceMatches().slice(0,10);
+    if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){
+      ev.preventDefault();attendanceDropdownOpen=true;
+      if(choices.length){attendanceActive=(attendanceActive+(ev.key==='ArrowDown'?1:-1)+choices.length)%choices.length;}
+      updateAttendanceSuggestions();return;
+    }
+    if(ev.key==='Enter'){
+      ev.preventDefault();const selected=choices[attendanceActive]||choices[0];
+      if(selected && !pub.roster.some(p=>p.id===selected.id)){
+        const button=document.querySelector(`.attendance-option[data-player="${CSS.escape(selected.id)}"]`);
+        button?.click();
+      }
+    }
+  });
+  document.addEventListener('click',ev=>{
+    if(!ev.target.closest('.attendance-search-wrap')&&attendanceDropdownOpen){attendanceDropdownOpen=false;updateAttendanceSuggestions();}
+  });
+  document.addEventListener('focusin',ev=>{
+    if(ev.target?.id==='attendance-search'&&attendanceSearch.trim()){attendanceDropdownOpen=true;updateAttendanceSuggestions();}
+  });
+  $('#demo-reset').addEventListener('click',()=>{if(!confirm('Reset the demo, sample players, and all round results?'))return;demoData=seedDemo();demoData.signups=demoData.players.slice(0,24).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));storeDemo();searchText='';refresh();flash('Demo reset.');});
+  document.querySelectorAll('.nav-tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+  async function init(){const hash=window.location.hash.substring(1);if(['signup','courts','leaderboard','admin'].includes(hash))switchTab(hash);if(configured&&!db){flash('Supabase library could not load. Check your internet connection.',true);return;}if(demo){readDemo();adminGranted=true;}else{const {data}=await db.auth.getSession();user=data?.session?.user||null;db.auth.onAuthStateChange((_event,session)=>{user=session?.user||null;});}await refresh();setInterval(()=>{if(!mutating&&document.visibilityState==='visible'&&!document.activeElement?.matches('input,select'))refresh();},12000);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!mutating)refresh();});}
+  init().catch(e=>flash(errText(e),true));
+})();
