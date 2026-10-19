@@ -32,9 +32,10 @@
   });
   if(document.documentElement?.dataset)applyTheme(document.documentElement.dataset.theme);
   let tab='courts',pub=null,admin=null,user=null,adminGranted=false,loading=false,mutating=false;
-  let lastError='',searchText='',lastFlashTimer=null,leaderboardPosition='All';
+  let lastError='',searchText='',lastFlashTimer=null,leaderboardPosition='All',leaderboardTier='All';
+  const expandedRankingTiers=new Set();
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
-  const APP_VERSION='1.10';
+  const APP_VERSION='1.12';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
@@ -203,20 +204,66 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const stats=`<div class="stat-row"><div class="stat"><span class="value">${pub.roster.length}</span><span class="label">Here today</span></div><div class="stat highlight"><span class="value">${Math.max(0,e.capacity-pub.roster.length)}</span><span class="label">Spots to fill</span></div><div class="stat"><span class="value">${e.round_number||1}</span><span class="label">Current round</span></div></div>`;
     return heading+stats+renderAttendance();
   }
+  // Tier names and icons are PRESENTATION ONLY: ratings are still calculated by Supabase.
+  // Challenger is awarded to the top 10 players in the OVERALL leaderboard, before position filtering.
+  const RANK_TIERS=[
+    {id:'challenger',name:'Challenger',minimum:null,range:'Top 10 players overall',glyph:'crown'},
+    {id:'grandmaster',name:'Grandmaster',minimum:1800,range:'1,800+ MMR',glyph:'wings'},
+    {id:'master',name:'Master',minimum:1600,range:'1,600–1,799 MMR',glyph:'triple'},
+    {id:'diamond',name:'Diamond',minimum:1450,range:'1,450–1,599 MMR',glyph:'diamond'},
+    {id:'emerald',name:'Emerald',minimum:1350,range:'1,350–1,449 MMR',glyph:'emerald'},
+    {id:'platinum',name:'Platinum',minimum:1250,range:'1,250–1,349 MMR',glyph:'spark'},
+    {id:'gold',name:'Gold',minimum:1150,range:'1,150–1,249 MMR',glyph:'star'},
+    {id:'silver',name:'Silver',minimum:1050,range:'1,050–1,149 MMR',glyph:'chevrons'},
+    {id:'bronze',name:'Bronze',minimum:500,range:'500–1,049 MMR',glyph:'bars'}
+  ];
+  const RANK_GLYPHS={
+    crown:'<path d="M19 42 16 25l11 8 9-13 9 13 11-8-3 17Z"/><path d="M22 47h28"/>',
+    wings:'<path d="M35 22 23 16 12 20l10 10-9 5 16 8m8-21 12-6 11 4-10 10 9 5-16 8"/><path d="m36 27 6 10-6 11-6-11Z"/>',
+    triple:'<path d="m21 29 15-11 15 11-15 11Z"/><path d="m22 39 14 10 14-10m-25 9 11 8 11-8"/>',
+    diamond:'<path d="M23 24h26l9 12-22 20-22-20Z"/><path d="m23 24 13 32 13-32M14 36h44"/>',
+    emerald:'<path d="m36 14 18 12v22L36 59 18 48V26Z"/><path d="m18 26 18 11 18-11M36 37v22"/>',
+    spark:'<path d="m36 14 6 16 16 6-16 6-6 16-6-16-16-6 16-6Z"/>',
+    star:'<path d="m36 14 7 15 16 2-12 11 3 16-14-8-14 8 3-16-12-11 16-2Z"/>',
+    chevrons:'<path d="m18 25 18 14 18-14M18 39l18 14 18-14"/>',
+    bars:'<path d="M22 29v21m14-28v28m14-21v21"/>'
+  };
+  function rankEmblem(tier,small=false){
+    return `<span class="rank-emblem rank-tier--${tier.id} ${small?'rank-emblem--small':''}" role="img" aria-label="${tier.name} rank"><svg viewBox="0 0 72 72" aria-hidden="true" focusable="false"><path class="emblem-shadow" d="M36 3 62 17l-3 32L36 68 13 49 10 17Z"/><path class="emblem-shield" d="M36 7 58 20l-3 27-19 17-19-17-3-27Z"/><path class="emblem-core" d="M36 15 50 24l-2 19-12 12-12-12-2-19Z"/><g class="emblem-glyph" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round">${RANK_GLYPHS[tier.glyph]}</g></svg></span>`;
+  }
+  function rankedPlayers(){
+    const sorted=[...(admin?.players||[])].sort((a,b)=>Number(b.mmr)-Number(a.mmr)||(b.wins||0)-(a.wins||0)||a.name.localeCompare(b.name));
+    return sorted.map((player,index)=>({player,overallPlace:index+1,tier:index<10?RANK_TIERS[0]:RANK_TIERS.slice(1).find(tier=>Number(player.mmr)>=tier.minimum)||RANK_TIERS.at(-1)}));
+  }
   function renderLeaderboard(){
     if(!adminGranted||!admin?.players)return '';
-    const ranked=[...admin.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name));
-    const filtered=ranked.filter(p=>leaderboardPosition==='All'||(p.position||'Unspecified')===leaderboardPosition);
-    const positionCounts=POSITIONS.map(p=>({name:p,count:ranked.filter(r=>(r.position||'Unspecified')===p).length}));
-    const sumWins=ranked.reduce((sum,p)=>sum+(p.wins||0),0);
-    const list=filtered.map((p,i)=>`<div class="ranking-row"><div class="ranking-number ${i<3?'top-rank':''}">${i+1}</div><div class="ranking-person"><strong>${safe(p.name)}</strong><span>${safe(p.position||'Unspecified')}</span></div><div class="ranking-mmr">${Number(p.mmr).toLocaleString()} MMR</div><div class="ranking-record">${p.wins||0}W <span>·</span> ${p.losses||0}L</div></div>`).join('');
-    return `<div class="section-top"><div><h2 id="leaderboard-title" class="section-title">Private player rankings</h2><p class="section-sub">Admin-only MMR leaderboards, filtered by preferred volleyball position.</p></div>${statusPill('Admin only','muted')}</div>
+    const ranked=rankedPlayers();
+    const visible=ranked.filter(item=>leaderboardPosition==='All'||(item.player.position||'Unspecified')===leaderboardPosition);
+    const positionCounts=POSITIONS.map(name=>({name,count:ranked.filter(r=>(r.player.position||'Unspecified')===name).length}));
+    const sumWins=ranked.reduce((sum,item)=>sum+(item.player.wins||0),0);
+    const tierCounts=Object.fromEntries(RANK_TIERS.map(tier=>[tier.id,visible.filter(item=>item.tier.id===tier.id).length]));
+    const tierSelect=(leaderboardTier==='All'?RANK_TIERS:RANK_TIERS.filter(tier=>tier.id===leaderboardTier))
+      .filter(tier=>leaderboardTier!=='All'||tierCounts[tier.id]>0);
+    const rankFilters=`<div class="rank-filter-strip" aria-label="Filter players by rank"><button type="button" class="rank-filter-pill ${leaderboardTier==='All'?'is-active':''}" data-action="rank-filter" data-rank="All" aria-pressed="${leaderboardTier==='All'}"><span>All ranks</span><b>${visible.length}</b></button>${RANK_TIERS.map(tier=>`<button type="button" class="rank-filter-pill rank-tier--${tier.id} ${leaderboardTier===tier.id?'is-active':''}" data-action="rank-filter" data-rank="${tier.id}" aria-pressed="${leaderboardTier===tier.id}">${rankEmblem(tier,true)}<span>${tier.name}</span><b>${tierCounts[tier.id]}</b></button>`).join('')}</div>`;
+    const list=tierSelect.map(tier=>{
+      const group=visible.filter(item=>item.tier.id===tier.id);
+      const expanded=expandedRankingTiers.has(tier.id);
+      const displayed=expanded?group:group.slice(0,5);
+      const rows=displayed.map(item=>{
+        const p=item.player,place=visible.indexOf(item)+1;
+        return `<div class="ranking-row ranked-tier-row rank-tier--${tier.id}"><div class="ranking-number ${place<=3?'top-rank':''}">#${place}</div>${rankEmblem(tier,true)}<div class="ranking-person"><strong>${safe(p.name)}</strong><span>${safe(p.position||'Unspecified')}${leaderboardPosition!=='All'?` · Overall #${item.overallPlace}`:''}</span></div><div class="ranking-mmr">${Number(p.mmr).toLocaleString()} MMR</div><div class="ranking-record">${p.wins||0}W <span>·</span> ${p.losses||0}L</div></div>`;
+      }).join('');
+      return `<section class="rank-division rank-tier--${tier.id}" aria-label="${tier.name} players"><div class="rank-division-head">${rankEmblem(tier)}<div class="rank-division-title"><h3>${tier.name}</h3><span>${tier.range}</span></div><span class="rank-division-count">${group.length} ${group.length===1?'player':'players'}</span></div><div class="rank-division-list" id="rank-roster-${tier.id}">${rows||'<div class="rank-empty">No players in this rank for this position.</div>'}</div>${group.length>5?`<button type="button" class="rank-show-all" data-action="rank-expand" data-rank="${tier.id}" aria-controls="rank-roster-${tier.id}" aria-expanded="${expanded}">${expanded?'↑ Show first 5':`↓ Show all ${group.length} ${tier.name} players`}</button>`:''}</section>`;
+    }).join('');
+    return `<div class="section-top"><div><h2 id="leaderboard-title" class="section-title">Private player rankings</h2><p class="section-sub">Admin-only leaderboards · Rank emblems and MMR are shown only here.</p></div>${statusPill('Admin only','muted')}</div>
       <section class="panel leaderboard-panel">
-        <div class="leaderboard-summary"><div><span class="mini-label">Registered players</span><strong>${ranked.length}</strong></div><div><span class="mini-label">Wins recorded</span><strong>${Math.round(sumWins)}</strong></div><div><span class="mini-label">Selected position</span><strong>${leaderboardPosition==='All'?'All':filtered.length}</strong></div></div>
+        <div class="leaderboard-summary"><div><span class="mini-label">Registered players</span><strong>${ranked.length}</strong></div><div><span class="mini-label">Wins recorded</span><strong>${Math.round(sumWins)}</strong></div><div><span class="mini-label">Selected position</span><strong>${leaderboardPosition==='All'?'All':visible.length}</strong></div></div>
         <div class="leaderboard-toolbar"><label class="label-input" for="leaderboard-filter">Preferred position</label><select id="leaderboard-filter" class="field">${positionOptions(leaderboardPosition,true)}</select></div>
         <div class="position-summary">${positionCounts.filter(x=>x.count).map(x=>`<span>${safe(x.name)} <b>${x.count}</b></span>`).join('')}</div>
-        <div class="ranking-list">${list||'<div class="empty"><strong>No players in this position yet</strong><p>Admins can assign a preferred position when editing player profiles.</p></div>'}</div>
-        <p class="subtle leaderboard-note">Actual MMR is visible only to approved admins. Preferred positions do not affect match balancing.</p>
+        <div class="ranking-heading"><div><h3>Rank divisions</h3><p>Challenger is always the overall top 10. Other ranks are based on current MMR.</p></div></div>
+        ${rankFilters}
+        <div class="rank-division-stack">${list||'<div class="empty"><strong>No players in this rank or position</strong><p>Choose another rank or position above to see more profiles.</p></div>'}</div>
+        <p class="subtle leaderboard-note">Rank icons are leaderboard-only. Rank tiers do not affect matchmaking, court placement, or player MMR.</p>
       </section>`;
   }
   const signedChange=value=>`${value>0?'+':''}${value}`;
@@ -421,6 +468,8 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'refresh':await refresh();break;
     case 'generate':await handleGenerate();break;
     case 'jump-ratings':{document.querySelector('#view-courts #live-private-results')?.scrollIntoView({behavior:'smooth',block:'start'});break;}
+    case 'rank-filter':{if(!adminGranted)break;const id=btn.dataset.rank;if(id!=='All'&&!RANK_TIERS.some(t=>t.id===id))break;leaderboardTier=id;$('#leaderboard-body').innerHTML=renderLeaderboard();break;}
+    case 'rank-expand':{if(!adminGranted||!RANK_TIERS.some(t=>t.id===btn.dataset.rank))break;const id=btn.dataset.rank;expandedRankingTiers.has(id)?expandedRankingTiers.delete(id):expandedRankingTiers.add(id);$('#leaderboard-body').innerHTML=renderLeaderboard();break;}
     case 'toggle-profiles':{showAllProfiles=!showAllProfiles;const panel=document.querySelector('#admin-body .admin-roster');if(panel){const input=document.querySelector('#player-search');const focusId=document.activeElement?.id;const pos=input?.selectionStart;$('#admin-body').innerHTML=renderAdmin();if(focusId==='player-search'){const restored=$('#player-search');restored?.focus();if(pos!==null&&pos!==undefined)restored?.setSelectionRange(pos,pos);}}break;}
     case 'court-mode':{if(!adminGranted||pub?.event?.status!=='open')break;const mode=btn.dataset.mode;if(!['mixed','split'].includes(mode))break;await act(()=>api.setCourtMode(pub.event.id,mode),mode==='mixed'?'Balanced mixed courts selected.':'Competitive / beginner courts selected.');break;}
     case 'save-profile':{const pid=btn.dataset.player;const card=btn.closest('.player-edit');const mmr=Number(card.querySelector('.profile-mmr').value);const position=card.querySelector('.profile-position').value;if(!Number.isInteger(mmr)||mmr<500||mmr>2500||!POSITIONS.includes(position)){flash('Choose a valid position and MMR between 500 and 2500.',true);return;}await act(()=>api.updatePlayer(pid,mmr,position),'Player profile saved.');break;}
