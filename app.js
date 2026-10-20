@@ -42,7 +42,7 @@
   function placementStatus(p){const played=matchesPlayed(p),remaining=placementLeft(p);return remaining?`Placement ${played}/${PLACEMENT_GAMES} · ${remaining} ${remaining===1?'match':'matches'} remaining`:`Placement complete · ${played} played`;}
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
-  const APP_VERSION='1.15';
+  const APP_VERSION='1.16';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
@@ -330,6 +330,17 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       <div class="match-line"><span class="match-side ${done&&m.winner_team_id===m.team_a_id?'winner':''}">${safe(leftLabel)}</span><span class="vs">${done&&m.score_a!==null?`${m.score_a} : ${m.score_b}`:'VS'}</span><span class="match-side right ${done&&m.winner_team_id===m.team_b_id?'winner':''}">${safe(rightLabel)}</span></div>
       ${done?'':controls}</article>`;
   }
+  // Team averages are derived ONLY from vmm_get_admin_state's protected player list.
+  // Never attach numeric averages to public roster JSON or public DOM nodes.
+  function adminTeamAverage(team){
+    if(!adminGranted || !admin?.players || !team?.players?.length)return '';
+    const byId=new Map(admin.players.map(p=>[p.id,p]));
+    const registered=team.players.filter(p=>!p.is_placeholder).map(p=>byId.get(p.id)).filter(p=>p && Number.isFinite(Number(p.mmr)));
+    if(!registered.length)return '<div class="team-average-mmr" aria-label="Average rating unavailable"><span class="team-average-label">🔒 TEAM AVG</span><strong>Unavailable</strong></div>';
+    const average=Math.round(registered.reduce((sum,p)=>sum+Number(p.mmr),0)/registered.length);
+    const tooltip=`Current average of ${registered.length} registered ${registered.length===1?'player':'players'}. Temporary substitutes are excluded. Changes after match results are included.`;
+    return `<div class="team-average-mmr" title="${safe(tooltip)}" aria-label="Admin only: current team average ${average.toLocaleString()} MMR from ${registered.length} rated players"><span class="team-average-label">🔒 TEAM AVERAGE</span><strong>${average.toLocaleString()} <span>MMR</span></strong><small>${registered.length} rated · Subs excluded</small></div>`;
+  }
   function renderCourts(){
     const e=pub.event;
     const canScore=Boolean(adminGranted&&e?.status==='locked');
@@ -344,7 +355,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const gamesDone=matches.filter(m=>m.winner_team_id).length;
       const courtTitle=e.court_mode==='split'?(court===1?'Court 01 · Competitive':'Court 02 · Beginner-friendly'):`Court 0${court}`;
       const header=`<div class="court-header"><div><h3>${courtTitle}</h3><p>${gamesDone}/3 matches completed</p></div>${statusPill(gamesDone===3?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===3?'win':'muted')}</div>`;
-      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}</div><ul class="team-members">${t.players.map(p=>p.is_placeholder?'<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute</small></li>':`<li>${safe(p.name)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
+      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}</div>${adminTeamAverage(t)}<ul class="team-members">${t.players.map(p=>p.is_placeholder?'<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute</small></li>':`<li>${safe(p.name)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
       const schedule=`<section class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${courtTitle} · Match schedule</h3><span>${gamesDone} of 3 complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div></section>`;
       return {roster,schedule};
     });

@@ -717,3 +717,16 @@ html[data-theme=dark] .ranking-placement.is-placing{color:#ffd38c}
 /* Four profile fields stay legible on desktop and on narrow screens. */
 .profile-selects{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:650px){.profile-selects label:first-child{grid-column:auto}}
+
+
+/* V1.16 — Private team-average badges (built only after successful admin authorization). */
+.court-roster .team-average-mmr{display:flex;flex-direction:column;align-items:flex-start;gap:3px;margin-top:9px;padding:9px 10px;border-radius:9px;border:1px solid #c5d4e9;background:#edf4ff;color:#102d53;min-width:0}
+.court-roster .team-average-label{font-size:9px;font-weight:900;line-height:1.3;letter-spacing:.6px;color:#315984}
+.court-roster .team-average-mmr strong{font-family:'DM Sans',system-ui,sans-serif;font-size:clamp(15px,1.5vw,19px);font-weight:900;line-height:1.25;overflow-wrap:anywhere;font-variant-numeric:tabular-nums;color:#102d53}
+.court-roster .team-average-mmr strong span{font-size:10px;letter-spacing:.25px}
+.court-roster .team-average-mmr small{font-size:9px;line-height:1.4;color:#385c7c}
+html[data-theme="dark"] .court-roster .team-average-mmr{background:#193454;border-color:#466c96;color:#eef7ff}
+html[data-theme="dark"] .court-roster .team-average-label{color:#add1fc}
+html[data-theme="dark"] .court-roster .team-average-mmr strong{color:#f4f9ff}
+html[data-theme="dark"] .court-roster .team-average-mmr small{color:#b9d0ed}
+@media(max-width:650px){.court-roster .team-average-mmr{padding:9px 11px}.court-roster .team-average-mmr strong{font-size:19px}.court-roster .team-average-mmr small{font-size:10px}}
