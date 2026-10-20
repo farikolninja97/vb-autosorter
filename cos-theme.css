@@ -1,0 +1,153 @@
+/* RallyRank V1.17 · COS Volleyball-inspired optional visual theme.
+   Original artwork, layout, and styles. Based on the public reference site's palette
+   and atmosphere; not affiliated with Colorado Springs Pickup Volleyball. */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+
+/* Admin design choices use neutral styling in EITHER design. */
+.site-brand-settings{border-top:4px solid #008b95!important}
+.brand-choice-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0 12px}
+.brand-choice{font:inherit;display:flex;flex-direction:column;gap:5px;align-items:flex-start;text-align:left;min-width:0;padding:14px;border:2px solid var(--border,#d4dfea);border-radius:13px;background:var(--panel,#fff);color:inherit;cursor:pointer;transition:border-color .15s,transform .15s,box-shadow .15s}
+.brand-choice:hover{transform:translateY(-2px);border-color:#008b95;box-shadow:0 7px 16px #008b9520}
+.brand-choice.is-selected{border-color:#008b95;box-shadow:0 0 0 2px #008b9522}
+.brand-choice strong{font-size:14px;line-height:1.4;color:inherit}
+.brand-choice small{font-size:11px;color:var(--muted,#667a8c)}
+.brand-selected{font-weight:800;font-size:11px;color:#008b95;margin-top:5px}
+.brand-swatch{display:flex;gap:5px;align-items:center;width:100%;height:42px;border-radius:9px;padding:8px 12px;margin-bottom:6px}
+.brand-swatch i,.brand-swatch b{display:block;height:9px;width:25%;border-radius:12px}
+.brand-swatch-original{background:linear-gradient(125deg,#071d49,#123c77)}
+.brand-swatch-original i{background:#c02a42}.brand-swatch-original b{background:#f2f5f9;width:43%}
+.brand-swatch-cos{background:linear-gradient(125deg,#06243a,#0d4760)}
+.brand-swatch-cos i{background:#19d4e3}.brand-swatch-cos b{background:#45ce5e;width:43%}
+.site-brand-note{font-size:11px!important;margin:0!important;color:var(--muted,#5b7286)!important}
+[data-theme="dark"] .brand-choice{background:#182b40;border-color:#496078;color:#f4f9ff}
+[data-theme="dark"] .brand-choice.is-selected{border-color:#19d4e3}
+[data-theme="dark"] .brand-selected{color:#5be3e7}
+@media(max-width:530px){.brand-choice-grid{gap:8px}.brand-choice{padding:11px}.brand-choice strong{font-size:12px}.brand-choice small{font-size:10px}.brand-swatch{height:37px;padding:7px}}
+
+/* COS-inspired light theme: navy header, teal actions, luminous cyan and calm cards. */
+html[data-brand="cos"]{
+  --navy:#072b44;--navy2:#0c3c55;--scarlet:#008b95;--accent:#008b95;
+  --border:#dce8ee;--muted:#566d7b;--text:#092945;
+  --bg:#f3f8fa;--panel:#ffffff;--panel2:#f5fafb;--line:#dce8ee;
+  color-scheme:light;
+}
+html[data-brand="cos"] body{font-family:'DM Sans',system-ui,sans-serif;background:#f3f8fa;color:#092945;background-image:radial-gradient(ellipse at 96% 4%,#dff4f6 0%,transparent 44%)}
+html[data-brand="cos"] .page-shell{max-width:1350px}
+html[data-brand="cos"] .utility-bar{background:#041d31;color:#bfdee7}
+html[data-brand="cos"] .utility-ball,html[data-brand="cos"] .utility-sep,html[data-brand="cos"] .footer-dot{color:#19d4e3}
+html[data-brand="cos"] .site-header{background:#072b44;border-bottom:1px solid #1d5167;margin:0 calc(-1 * clamp(15px,3.3vw,46px));padding:6px clamp(15px,3.3vw,46px);min-height:88px}
+html[data-brand="cos"] .brand-icon{background:#008b95;border-radius:10px;transform:none;box-shadow:0 4px 16px #001d2e33}
+html[data-brand="cos"] .brand-icon svg{transform:none}
+html[data-brand="cos"] .brand-text strong{color:#fff!important;font-size:30px}
+html[data-brand="cos"] .brand-text strong span{color:#19d4e3}
+html[data-brand="cos"] .brand-text small{color:#b2d5dc!important}
+html[data-brand="cos"] .connection-status{color:#b7d5df!important}
+html[data-brand="cos"] .main-nav{border-bottom:1px solid #dae6ea;margin-bottom:15px}
+html[data-brand="cos"] .nav-tab{background:white;border:1px solid #dce8ee;color:#28506a;box-shadow:0 3px 10px #0c34420b}
+html[data-brand="cos"] .nav-tab.active{background:#008b95;border-color:#008b95;color:white;box-shadow:0 6px 14px #008b952c}
+html[data-brand="cos"] .nav-tab:hover{background:#e5f7f8;border-color:#6ac9ce;color:#087d89}
+html[data-brand="cos"] .nav-tab.active:hover{background:#007884;color:white}
+html[data-brand="cos"] .theme-toggle{background:#0d4058;border:1px solid #517585;color:#f5ffff}
+html[data-brand="cos"] .theme-toggle:hover{background:#155570;border-color:#19d4e3}
+html[data-brand="cos"] .hero{background:linear-gradient(109deg,#06243a 5%,#09374f 65%,#09556a);box-shadow:0 17px 30px #072b4422;border-radius:15px;min-height:302px}
+html[data-brand="cos"] .hero:before{opacity:.8;background:repeating-linear-gradient(145deg,transparent 0,transparent 52px,#ffffff08 53px,#ffffff08 54px)}
+html[data-brand="cos"] .hero:after{background:linear-gradient(#19d4e3,#45ce5e)}
+html[data-brand="cos"] .hero h1{color:#fff;font-family:'Barlow Condensed','Arial Narrow',sans-serif;font-weight:800;letter-spacing:.1px;line-height:1}
+html[data-brand="cos"] .hero h1 em{color:#26e1e9}
+html[data-brand="cos"] .hero p{color:#dfedf1;font-size:14px}
+html[data-brand="cos"] .hero .eyebrow{color:#8deaf1}
+html[data-brand="cos"] .pulse-dot{background:#45ce5e;box-shadow:0 0 0 4px #45ce5e33}
+html[data-brand="cos"] .hero-facts strong{color:#fff}
+html[data-brand="cos"] .hero-facts span{color:#d4eef4;border-color:#73bac45a}
+html[data-brand="cos"] .hero-symbol svg{filter:hue-rotate(167deg) saturate(.86) drop-shadow(0 12px 12px #02192780)}
+html[data-brand="cos"] .section-title,html[data-brand="cos"] .panel h3,html[data-brand="cos"] .team-title,html[data-brand="cos"] .stat .value{color:#092945;font-family:'Barlow Condensed','Arial Narrow',sans-serif;letter-spacing:.2px}
+html[data-brand="cos"] .section-sub,html[data-brand="cos"] .subtle{color:#566d7b}
+html[data-brand="cos"] .small-caps{color:#008b95}
+html[data-brand="cos"] .panel,html[data-brand="cos"] .stat,html[data-brand="cos"] .stat.highlight,html[data-brand="cos"] .court{background:#fff;border:1px solid #dce8ee;box-shadow:0 6px 18px #1338500c}
+html[data-brand="cos"] .stat:before,html[data-brand="cos"] .stat.highlight:before{background:#19b8c3}
+html[data-brand="cos"] .stat.highlight .value{color:#008b95}
+html[data-brand="cos"] .panel-head h3{color:#092945}
+html[data-brand="cos"] .btn-primary{background:#008b95;border-color:#008b95;color:#fff;box-shadow:0 5px 15px #008b951d}
+html[data-brand="cos"] .btn-primary:hover:not(:disabled){background:#00777f;border-color:#00777f}
+html[data-brand="cos"] .btn-secondary{background:#ecf5f7;color:#0a4a61;border-color:#bed6de}
+html[data-brand="cos"] .btn-secondary:hover:not(:disabled){background:#ddf1f2;border-color:#59aeb8;color:#095162}
+html[data-brand="cos"] .btn-quiet{color:#008b95}
+html[data-brand="cos"] .field:focus{border-color:#008b95;box-shadow:0 0 0 3px #19d4e333}
+html[data-brand="cos"] .progress-wrap span{background:linear-gradient(90deg,#008b95,#45ce5e)}
+html[data-brand="cos"] .hint{background:#e7f5f7;border-color:#008b95;color:#22576b}
+html[data-brand="cos"] .court-header,html[data-brand="cos"] .court:nth-child(2) .court-header{background:#072b44;border-bottom:4px solid #19d4e3}
+html[data-brand="cos"] .court:nth-child(2) .court-header{background:#0a4052;border-bottom-color:#45ce5e}
+html[data-brand="cos"] .court-header h3{color:#fff}
+html[data-brand="cos"] .court-header p{color:#c4e3eb}
+html[data-brand="cos"] .team{background:#f6fafb;border-color:#dfeaf0}
+html[data-brand="cos"] .team:before{background:#008b95}
+html[data-brand="cos"] .team:nth-child(2):before{background:#19d4e3}
+html[data-brand="cos"] .team:nth-child(3):before{background:#45ce5e}
+html[data-brand="cos"] .team-members li{color:#355b6e}
+html[data-brand="cos"] .match-side,html[data-brand="cos"] .roster-name,html[data-brand="cos"] .player-edit-name{color:#153b51}
+html[data-brand="cos"] .match{border-color:#dce8ee}
+html[data-brand="cos"] .match-done{border-left-color:#008b95}
+html[data-brand="cos"] .vs{background:#ddf5f7;color:#007e88}
+html[data-brand="cos"] .attendance-stats>div{background:#f1f8fa}
+html[data-brand="cos"] .attendance-stats>div:first-child strong{color:#008b95}
+html[data-brand="cos"] .attendance-option-action,html[data-brand="cos"] .attendance-search-hint strong{color:#007f89}
+html[data-brand="cos"] .attendance-option:hover:not(:disabled){background:#e8f7f8}
+html[data-brand="cos"] .player-edit{background:#f6fafb}
+html[data-brand="cos"] .ranking-number.top-rank,html[data-brand="cos"] .leaderboard-summary>div:nth-child(2) strong{color:#008b95}
+html[data-brand="cos"] .site-footer{border-top:1px solid #dce8ee;color:#566d7b}
+html[data-brand="cos"] .site-footer>span:first-child{color:#072b44}
+html[data-brand="cos"] .mode-indicator{background:#e4f8ef;color:#18744f;border-color:#aee6c3}
+html[data-brand="cos"] .brand-choice.is-selected{border-color:#008b95}
+html[data-brand="cos"] .court-roster .team-average-mmr{background:#e9f8f9;border-color:#a9dcdf}
+html[data-brand="cos"] .court-roster .team-average-label,html[data-brand="cos"] .court-roster .team-average-mmr strong{color:#084c5e}
+
+/* The selected COS design also supports the existing device-local dark mode. */
+html[data-brand="cos"][data-theme="dark"]{color-scheme:dark;--bg:#061824;--panel:#102b39;--panel2:#123444;--muted:#a5c1cd;--line:#315663;--border:#315663;--text:#e3f6f8}
+html[data-brand="cos"][data-theme="dark"] body{background:#061824;color:#e3f6f8;background-image:radial-gradient(ellipse at 95% 0%,#0b3f4d 0%,transparent 44%)}
+html[data-brand="cos"][data-theme="dark"] .site-header{background:#041925}
+html[data-brand="cos"][data-theme="dark"] .main-nav{border-color:#245366}
+html[data-brand="cos"][data-theme="dark"] .nav-tab{background:#143144;border-color:#326074;color:#c5edf1}
+html[data-brand="cos"][data-theme="dark"] .nav-tab.active{background:#008b95;border-color:#04b7c2;color:#fff}
+html[data-brand="cos"][data-theme="dark"] .nav-tab:not(.active):hover{background:#215062;color:#b4f5f8}
+html[data-brand="cos"][data-theme="dark"] .hero{background:linear-gradient(106deg,#041e2c,#084053 75%,#0a5363)}
+html[data-brand="cos"][data-theme="dark"] .section-title,html[data-brand="cos"][data-theme="dark"] .panel h3,html[data-brand="cos"][data-theme="dark"] .team-title,html[data-brand="cos"][data-theme="dark"] .stat .value{color:#efffff}
+html[data-brand="cos"][data-theme="dark"] .section-sub,html[data-brand="cos"][data-theme="dark"] .subtle,html[data-brand="cos"][data-theme="dark"] .stat .label{color:#a2c6d0}
+html[data-brand="cos"][data-theme="dark"] .small-caps{color:#48d8df}
+html[data-brand="cos"][data-theme="dark"] .panel,html[data-brand="cos"][data-theme="dark"] .stat,html[data-brand="cos"][data-theme="dark"] .stat.highlight,html[data-brand="cos"][data-theme="dark"] .court{background:#102b39;border-color:#305264;box-shadow:0 8px 20px #0004}
+html[data-brand="cos"][data-theme="dark"] .stat.highlight .value{color:#43d7df}
+html[data-brand="cos"][data-theme="dark"] .panel p{color:#bad2db}
+html[data-brand="cos"][data-theme="dark"] .btn-primary{background:#008b95;border-color:#14b7bd;color:#fff}
+html[data-brand="cos"][data-theme="dark"] .btn-primary:hover:not(:disabled){background:#07a5ae}
+html[data-brand="cos"][data-theme="dark"] .btn-secondary{background:#1c4555;border-color:#47778a;color:#e4faff}
+html[data-brand="cos"][data-theme="dark"] .btn-secondary:hover:not(:disabled){background:#285868;border-color:#65afbb;color:#fff}
+html[data-brand="cos"][data-theme="dark"] .hint{background:#103c49;border-color:#19d4e3;color:#bee9f0}
+html[data-brand="cos"][data-theme="dark"] .court-header{background:#062c3b}
+html[data-brand="cos"][data-theme="dark"] .court:nth-child(2) .court-header{background:#0b4350}
+html[data-brand="cos"][data-theme="dark"] .team{background:#143443;border-color:#326174}
+html[data-brand="cos"][data-theme="dark"] .team-members li{color:#c2dce3}
+html[data-brand="cos"][data-theme="dark"] .match-side,html[data-brand="cos"][data-theme="dark"] .roster-name,html[data-brand="cos"][data-theme="dark"] .player-edit-name{color:#efffff}
+html[data-brand="cos"][data-theme="dark"] .vs{background:#164e59;color:#80eff2}
+html[data-brand="cos"][data-theme="dark"] .attendance-stats>div{background:#153746}
+html[data-brand="cos"][data-theme="dark"] .attendance-stats>div:first-child strong{color:#5ce1e7}
+html[data-brand="cos"][data-theme="dark"] .attendance-option-action,html[data-brand="cos"][data-theme="dark"] .attendance-search-hint strong{color:#69e6e8}
+html[data-brand="cos"][data-theme="dark"] .attendance-option:hover:not(:disabled){background:#1e4755}
+html[data-brand="cos"][data-theme="dark"] .player-edit{background:#153544}
+html[data-brand="cos"][data-theme="dark"] .ranking-number.top-rank{color:#57dce3}
+html[data-brand="cos"][data-theme="dark"] .site-footer{border-color:#315663;color:#9cbac5}
+html[data-brand="cos"][data-theme="dark"] .site-footer>span:first-child{color:#efffff}
+html[data-brand="cos"][data-theme="dark"] .mode-indicator{background:#17493e;color:#a1ead1;border-color:#2b7767}
+html[data-brand="cos"][data-theme="dark"] .court-roster .team-average-mmr{background:#173d4a;border-color:#367a87}
+html[data-brand="cos"][data-theme="dark"] .court-roster .team-average-label,html[data-brand="cos"][data-theme="dark"] .court-roster .team-average-mmr strong{color:#c3f8fa}
+@media(max-width:650px){html[data-brand="cos"] .site-header{padding-top:10px;padding-bottom:10px}html[data-brand="cos"] .brand-text strong{font-size:27px}html[data-brand="cos"] .hero{min-height:255px}}
+/* Override the existing dark-mode red CSS variables, too. */
+html[data-brand="cos"][data-theme="dark"]{
+  --navy:#e3fbfd;--navy2:#7de5ec;--scarlet:#19d4e3;--accent:#2bdae4;
+  --lime:#60e8e8;--ink:#e3fbfd;--red:#d9838e;--blue:#80dce8;
+}
+html[data-brand="cos"] .demo-toggle:not(.demo-is-active),html[data-brand="cos"][data-theme="dark"] .demo-toggle:not(.demo-is-active){background:#087f88;border-color:#19d4e3;color:#fff;box-shadow:0 4px 11px #008b952b}
+html[data-brand="cos"] .demo-toggle:not(.demo-is-active):hover{background:#076971;border-color:#19d4e3}
+html[data-brand="cos"] .demo-toggle.demo-is-active{background:#d5f6e4;border-color:#8addb8;color:#0b5a4d}
+html[data-brand="cos"] #view-courts #live-private-results{border-top-color:#008b95}
+html[data-brand="cos"][data-theme="dark"] #view-courts #live-private-results{border-top-color:#19d4e3}
+html[data-brand="cos"] .court-mode-option:focus-visible{outline-color:#19d4e3}
+html[data-brand="cos"][data-theme="dark"] .team-title{color:#eaffff}

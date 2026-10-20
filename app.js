@@ -20,12 +20,29 @@
 
   const priorityRoster=()=>[...(pub?.roster||[])].sort((a,b)=>(a.rounds_played||0)-(b.rounds_played||0)||String(a.checked_at).localeCompare(String(b.checked_at)));
 
+  // Brand style is site-wide, chosen by an approved admin. Light/dark remains device-local.
+  let siteBrand='rallyrank', brandError=false, demoBrand=null;
+  function applyBrand(style){
+    const chosen=style==='cos'?'cos':'rallyrank';
+    document.documentElement.dataset.brand=chosen;
+    const meta=document.querySelector('meta[name=theme-color]');
+    if(meta)meta.content=chosen==='cos'?'#072b44':(document.documentElement.dataset.theme==='dark'?'#0b1323':'#071d49');
+  }
+  async function loadSiteBrand(){
+    if(demo){applyBrand(demoBrand||siteBrand);return;}
+    if(!db){applyBrand(siteBrand);return;}
+    try{
+      const {data,error}=await db.rpc('vmm_get_site_theme');
+      if(error)throw error;
+      siteBrand=data==='cos'?'cos':'rallyrank';brandError=false;applyBrand(siteBrand);
+    }catch(e){brandError=true;applyBrand(siteBrand);}
+  }
   function applyTheme(theme){
     const dark=theme==='dark';
     if(document.documentElement?.dataset)document.documentElement.dataset.theme=dark?'dark':'light';
     const toggle=$('#theme-toggle');
     if(toggle){toggle.setAttribute('aria-label',dark?'Switch to light mode':'Switch to dark mode');toggle.setAttribute('aria-pressed',String(dark));toggle.querySelector('.theme-symbol').textContent=dark?'☀':'☾';toggle.querySelector('.theme-label').textContent=dark?'Light':'Dark';}
-    const meta=document.querySelector('meta[name=theme-color]');if(meta)meta.content=dark?'#0b1323':'#071d49';
+    const meta=document.querySelector('meta[name=theme-color]');if(meta)meta.content=document.documentElement.dataset.brand==='cos'?'#072b44':(dark?'#0b1323':'#071d49');
   }
   $('#theme-toggle')?.addEventListener('click',()=>{
     const next=document.documentElement.dataset.theme==='dark'?'light':'dark';
@@ -42,7 +59,7 @@
   function placementStatus(p){const played=matchesPlayed(p),remaining=placementLeft(p);return remaining?`Placement ${played}/${PLACEMENT_GAMES} · ${remaining} ${remaining===1?'match':'matches'} remaining`:`Placement complete · ${played} played`;}
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
-  const APP_VERSION='1.16';
+  const APP_VERSION='1.17';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
@@ -162,6 +179,8 @@
       if(demo){admin=await api.getAdmin();if(epoch!==modeEpoch)return;adminGranted=true;}
       else if(user){try{admin=await api.getAdmin();if(epoch!==modeEpoch)return;adminGranted=true;}catch(e){if(epoch!==modeEpoch)return;adminGranted=false;admin=null;}}
       else{admin=null;adminGranted=false;}
+      await loadSiteBrand();
+      if(epoch!==modeEpoch)return;
       enforceAdminNavigation();
       if(adminGranted||!user)lastError='';
       render();
@@ -181,6 +200,8 @@
     if(!enable&&!configured){flash('A Supabase connection is required.',true);return false;}
     if(demo===enable)return true;
     modeEpoch++;demo=enable;
+    if(enable)demoBrand=siteBrand;else demoBrand=null;
+    applyBrand(enable?demoBrand:siteBrand);
     pub=null;admin=null;lastError='';searchText='';attendanceSearch='';attendanceDropdownOpen=false;
     const url=new URL(window.location.href);
     if(enable){url.searchParams.set('demo','1');readDemo();}
@@ -425,8 +446,10 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   function renderAdmin(){if(!demo&&!user)return `<section class="panel" style="max-width:500px;margin:0 auto"><div class="panel-head"><h3 id="admin-title">Admin sign-in</h3>${statusPill('Private','muted')}</div><p class="subtle">Only approved staff can manage player profiles, attendance, team assignments, and match results.</p><form id="login-form" class="form-stack"><div><label for="admin-email" class="label-input">Email</label><input id="admin-email" class="field" type="email" name="email" placeholder="you@example.com" autocomplete="username" required /></div><div><label for="admin-password" class="label-input">Password</label><input id="admin-password" class="field" type="password" name="password" autocomplete="current-password" required /></div><button type="submit" class="btn btn-primary btn-full">Sign in securely</button></form><p class="subtle">Admins are approved in Supabase, not through a hardcoded website password.</p></section>`;
     if(!adminGranted)return `<section class="panel"><div class="panel-head"><h3 id="admin-title">Admin permission required</h3></div><p>Your Supabase account is signed in but is not authorized in <code>vmm_admins</code>. Ask the database owner to add this account.</p><button data-action="logout" class="btn btn-secondary">Sign out</button></section>`;
     const header=`<div class="section-top"><div><h2 id="admin-title" class="section-title">Player administration</h2><p class="section-sub">${demo?'Private sandbox · approved admin':`Signed in as ${safe(user?.email||'admin')}`}</p></div>${!demo?'<button class="btn btn-small btn-secondary" data-action="logout">Sign out</button>':''}</div>`;
+    const activeBrand=demo?(demoBrand||siteBrand):siteBrand;
+    const brandPanel=`<section class="panel admin-section site-brand-settings" aria-label="Admin site appearance controls"><div class="panel-head"><h3>🎨 Website theme</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Choose the look everyone sees. The current RallyRank design is preserved. The COS-inspired design uses Colorado Springs Pickup Volleyball-style navy, teal, and cyan. Visitors can still choose their own light/dark mode.</p><div class="brand-choice-grid"><button type="button" class="brand-choice ${activeBrand==='rallyrank'?'is-selected':''}" data-action="site-brand" data-brand="rallyrank" aria-pressed="${activeBrand==='rallyrank'}"><span class="brand-swatch brand-swatch-original"><i></i><b></b><i></i></span><strong>Original RallyRank</strong><small>Classic navy &amp; red</small><span class="brand-selected">${activeBrand==='rallyrank'?'✓ Currently selected':'Select design →'}</span></button><button type="button" class="brand-choice ${activeBrand==='cos'?'is-selected':''}" data-action="site-brand" data-brand="cos" aria-pressed="${activeBrand==='cos'}"><span class="brand-swatch brand-swatch-cos"><i></i><b></b><i></i></span><strong>COS Volleyball-inspired</strong><small>Deep navy &amp; teal</small><span class="brand-selected">${activeBrand==='cos'?'✓ Currently selected':'Select design →'}</span></button></div><p class="site-brand-note">${demo?'Practice-only: this theme change stays in Demo Mode and does not update your live website.':brandError?'⚠ Site-wide setting unavailable. Run supabase/upgrade-v1.17.sql before changing the design.':'Changes are saved for all visitors. Only approved admins can change the design.'}</p></section>`;
     const ratings=`<section class="panel admin-section admin-edit-profiles"><div class="panel-head"><h3>Edit player profiles</h3><span class="small-caps">${admin?.players?.length||0} registered</span></div><p class="subtle">By default only the first <strong>5 players</strong> appear below. Use <strong>Show all</strong> to expand or search to find anyone. Ratings stay private to admins.</p>${renderPlayerRatings(false)}</section>`;
-    return `${header}<div class="admin-grid"><div>${renderAddPlayerForm()}</div><div>${ratings}</div></div><div class="admin-panel"><button class="btn btn-secondary btn-full" type="button" data-tab="signup">✓ Open admin check-in →</button><button class="btn btn-secondary btn-full" type="button" data-tab="courts">🏐 Open Live Courts · management & private results →</button></div>`;
+    return `${header}${brandPanel}<div class="admin-grid"><div>${renderAddPlayerForm()}</div><div>${ratings}</div></div><div class="admin-panel"><button class="btn btn-secondary btn-full" type="button" data-tab="signup">✓ Open admin check-in →</button><button class="btn btn-secondary btn-full" type="button" data-tab="courts">🏐 Open Live Courts · management & private results →</button></div>`;
   }
   function renderSessionManagement(){
     if(!adminGranted)return '';
@@ -511,6 +534,21 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'rank-filter':{if(!adminGranted)break;const id=btn.dataset.rank;if(id!=='All'&&!RANK_TIERS.some(t=>t.id===id))break;leaderboardTier=id;$('#leaderboard-body').innerHTML=renderLeaderboard();break;}
     case 'rank-expand':{if(!adminGranted||!RANK_TIERS.some(t=>t.id===btn.dataset.rank))break;const id=btn.dataset.rank;expandedRankingTiers.has(id)?expandedRankingTiers.delete(id):expandedRankingTiers.add(id);$('#leaderboard-body').innerHTML=renderLeaderboard();break;}
     case 'toggle-profiles':{showAllProfiles=!showAllProfiles;const panel=document.querySelector('#admin-body .admin-roster');if(panel){const input=document.querySelector('#player-search');const focusId=document.activeElement?.id;const pos=input?.selectionStart;$('#admin-body').innerHTML=renderAdmin();if(focusId==='player-search'){const restored=$('#player-search');restored?.focus();if(pos!==null&&pos!==undefined)restored?.setSelectionRange(pos,pos);}}break;}
+    case 'site-brand':{
+      if(!adminGranted)break;
+      const brand=btn.dataset.brand;
+      if(!['rallyrank','cos'].includes(brand))break;
+      if(demo){demoBrand=brand;applyBrand(brand);render();flash('Demo appearance changed. The live site is unaffected.');break;}
+      if(brandError){flash('Install supabase/upgrade-v1.17.sql first to enable site-wide theme changes.',true);break;}
+      if(brand===siteBrand)break;
+      const ok=await act(async ()=>{
+        const {data,error}=await db.rpc('vmm_admin_set_site_theme',{p_theme:brand});
+        if(error)throw error;
+        siteBrand=data==='cos'?'cos':'rallyrank';applyBrand(siteBrand);
+      },'Website theme saved for everyone.');
+      if(ok)render();
+      break;
+    }
     case 'court-mode':{if(!adminGranted||pub?.event?.status!=='open')break;const mode=btn.dataset.mode;if(!['mixed','split'].includes(mode))break;await act(()=>api.setCourtMode(pub.event.id,mode),mode==='mixed'?'Balanced mixed courts selected.':'Competitive / beginner courts selected.');break;}
     case 'save-profile':{const pid=btn.dataset.player;const card=btn.closest('.player-edit');const mmr=Number(card.querySelector('.profile-mmr').value);const position=card.querySelector('.profile-position').value;const gender=card.querySelector('.profile-gender').value;if(!GENDERS.includes(gender)||!Number.isInteger(mmr)||mmr<500||mmr>2500||!POSITIONS.includes(position)){flash('Choose a valid position and MMR between 500 and 2500.',true);return;}await act(()=>api.updatePlayer(pid,mmr,position,gender),'Player profile saved.');break;}
     case 'delete-player':{
