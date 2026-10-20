@@ -60,10 +60,63 @@
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.19';
+  const APP_VERSION='1.20';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
+  // V1.20 low-usage sync: one lightweight Broadcast per active, visible tab.
+  // Broadcasts contain change notifications ONLY. Data is always read from
+  // the existing, permission-checked RPC functions after the notification.
+  const BACKUP_REFRESH_MS=60000;
+  const MIN_BROADCAST_REFRESH_GAP_MS=5000;
+  const BRAND_CACHE_MS=10*60000;
+  let syncChannel=null, syncConnected=false, syncEverConnected=false;
+  let refreshScheduled=null, refreshPending=false, lastRefreshStarted=0, lastRefreshSucceeded=0;
+  let brandCheckedAt=0;
+  function clearScheduledRefresh(){
+    if(refreshScheduled!==null){clearTimeout(refreshScheduled);refreshScheduled=null;}
+  }
+  function requestChangeRefresh(delay=250){
+    if(!db||demo||document.visibilityState!=='visible'||mutating)return;
+    if(refreshScheduled!==null)return; // Coalesce bursts of changes into one fetch.
+    const since=Date.now()-lastRefreshStarted;
+    const wait=Math.max(delay,MIN_BROADCAST_REFRESH_GAP_MS-since,0);
+    refreshScheduled=setTimeout(()=>{
+      refreshScheduled=null;
+      // Never discard partially entered scores, attendance search or profile edits.
+      if(document.activeElement?.matches('input,select,textarea,[contenteditable="true"]')){requestChangeRefresh(800);return;}
+      refresh(true); // Queue a second pass if another fetch is still in flight.
+    },wait);
+  }
+  function closeSyncChannel(){
+    clearScheduledRefresh();
+    const old=syncChannel;syncChannel=null;syncConnected=false;
+    if(old&&db){try{Promise.resolve(db.removeChannel(old)).catch(()=>{});}catch(e){/* fallback polling remains */}}
+  }
+  function openSyncChannel(){
+    if(!db||demo||document.visibilityState!=='visible'||syncChannel||!navigator.onLine)return;
+    try{
+      const channel=db.channel('rallyrank:live-updates',{config:{broadcast:{self:false}}});
+      syncChannel=channel;
+      channel.on('broadcast',{event:'changed'},message=>{
+        if(syncChannel!==channel||demo)return;
+        if(message?.payload?.kind==='theme')brandCheckedAt=0;
+        requestChangeRefresh(350);
+      }).subscribe(status=>{
+        if(syncChannel!==channel)return;
+        if(status==='SUBSCRIBED'){
+          const reconnect=syncEverConnected;syncConnected=true;syncEverConnected=true;
+          // Missed notifications while offline are covered on reconnect.
+          if(reconnect&&Date.now()-lastRefreshSucceeded>MIN_BROADCAST_REFRESH_GAP_MS)requestChangeRefresh(350);
+        }else if(['CLOSED','CHANNEL_ERROR','TIMED_OUT'].includes(status)){syncConnected=false;}
+      });
+    }catch(e){syncChannel=null;syncConnected=false;/* 60-second fallback always works */}
+  }
+  function announceChange(kind='state'){
+    if(demo||!syncConnected||!syncChannel)return;
+    // No names, IDs, ratings, attendance or scores are broadcast.
+    try{Promise.resolve(syncChannel.send({type:'broadcast',event:'changed',payload:{kind}})).catch(()=>{});}catch(e){}
+  }
   const SAMPLE=[['Alex R.',1460],['Sam D.',1190],['Taylor P.',1030],['Jordan C.',1260],['Morgan B.',910],['Casey G.',1080],['Avery K.',1350],['Riley F.',980],['Jamie L.',820],['Drew T.',1240],['Parker M.',1110],['Cameron S.',1020],['Quinn V.',950],['Reese H.',1380],['Hayden W.',1160],['Blake E.',860],['Rowan A.',1300],['Dakota N.',1000],['Skyler J.',1140],['Kendall O.',930],['Finley Z.',1490],['Marley U.',940],['Emerson Q.',1050],['Robin I.',1220],['Nico J.',1100],['Sydney Y.',940],['Alexis N.',1310],['Ari V.',1180],['Mia P.',1010],['Noah B.',975],['Lena V.',1030],['Mateo L.',1005],['Sofia C.',950],['Eli T.',1065],['Nina G.',990],['Leo H.',1125],['Isla M.',1045],['Owen R.',1000],['Zoe A.',970],['Max P.',1230],['Jules K.',1510],['Kai W.',980],['Ivy S.',1030],['Chris U.',940]];
   function seedDemo(){return {event:{id:id(),title:'Open Volleyball',date:localDate(),team_size:6,court_mode:'mixed',gender_balance:false,round_number:1,duration_minutes:180,status:'open'},archives:[],players:SAMPLE.map(([name,mmr],i)=>({id:id(),name,mmr,position:POSITIONS[1+i%6],wins:0,losses:0,gender:['Man','Woman','Man','Woman','Man','Nonbinary','Woman','Unspecified'][i%8]})),signups:[],teams:[],matches:[],history:[]};}
   function readDemo(){try{const s=localStorage.getItem('rallyrank-demo-v107');if(s){demoData=JSON.parse(s);demoData.archives||=[];demoData.players.forEach((p,i)=>{p.position||='Unspecified';if(!GENDERS.includes(p.gender))p.gender=['Woman','Man','Man','Woman','Unspecified','Nonbinary'][i%6];});if(demoData.event){demoData.event.round_number||=1;demoData.event.duration_minutes=180;demoData.event.court_mode||='mixed';demoData.event.gender_balance??=false;}return;}}catch(e){}demoData=seedDemo();demoData.signups=demoData.players.slice(0,36).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));storeDemo();}
@@ -163,33 +216,56 @@
     return !error;
   }
   async function refresh(force=false){
-    if(loading&&!force)return;
-    loading=true;
+    if(!force&&document.visibilityState==='hidden')return;
+    // Serialize every refresh, including forced refreshes and mode transitions.
+    if(loading){if(force)refreshPending=true;return;}
+    clearScheduledRefresh();
+    loading=true;lastRefreshStarted=Date.now();
     const epoch=modeEpoch;
     try{
-      // Re-check server authorization during demo too, including when an admin is revoked or signs out.
+      // Demo remains admin-only; periodic checks detect revoked accounts.
       if(demo && !(await verifyAdmin())){
         if(epoch!==modeEpoch)return;
         demo=false;adminGranted=false;admin=null;modeEpoch++;
         const url=new URL(window.location.href);url.searchParams.delete('demo');
         if(['http:','https:'].includes(url.protocol))window.history.replaceState(null,'',url.pathname+url.search+'#courts');
         flash('Admin access is required for Demo Mode. Please sign in again.',true);
-        await refresh(true);return;
+        refreshPending=true;return;
       }
-      const next=await api.getPublic();
+      let nextPublic=null,nextAdmin=null,nextGranted=false;
+      if(demo){
+        nextPublic=await api.getPublic();
+        nextAdmin=await api.getAdmin();nextGranted=true;
+      }else if(user){
+        // Admin-state RPC ALREADY includes courts, attendance and match results.
+        // Do not download vmm_get_state a second time for approved admins.
+        try{nextAdmin=await api.getAdmin();nextPublic=nextAdmin;nextGranted=true;}
+        catch(e){nextPublic=await api.getPublic();}
+      }else{
+        nextPublic=await api.getPublic();
+      }
       if(epoch!==modeEpoch)return;
-      pub=next;
-      if(demo){admin=await api.getAdmin();if(epoch!==modeEpoch)return;adminGranted=true;}
-      else if(user){try{admin=await api.getAdmin();if(epoch!==modeEpoch)return;adminGranted=true;}catch(e){if(epoch!==modeEpoch)return;adminGranted=false;admin=null;}}
-      else{admin=null;adminGranted=false;}
-      await loadSiteBrand();
+      pub=nextPublic;admin=nextAdmin;adminGranted=nextGranted;
+      // Website appearance rarely changes. Cache it instead of asking Supabase
+      // again every time attendance or a match score changes.
+      if(demo){applyBrand(demoBrand||siteBrand);}
+      else if(!brandCheckedAt||Date.now()-brandCheckedAt>=BRAND_CACHE_MS){
+        brandCheckedAt=Date.now();await loadSiteBrand();
+      }
       if(epoch!==modeEpoch)return;
       enforceAdminNavigation();
       if(adminGranted||!user)lastError='';
       render();
+      lastRefreshSucceeded=Date.now();
       $('#connection-status').textContent=!configured?'Setup required':demo?'LOCAL SANDBOX':'Synced';
-    }catch(e){if(epoch!==modeEpoch)return;if(lastError!==errText(e)){flash(`Connection error: ${errText(e)}`,true);lastError=errText(e);}$('#connection-status').textContent='Connection failed';}
-    finally{if(epoch===modeEpoch)loading=false;}
+    }catch(e){
+      if(epoch!==modeEpoch)return;
+      if(lastError!==errText(e)){flash(`Connection error: ${errText(e)}`,true);lastError=errText(e);}
+      $('#connection-status').textContent='Connection failed';
+    }finally{
+      loading=false;
+      if(refreshPending){refreshPending=false;clearScheduledRefresh();Promise.resolve().then(()=>refresh(true));}
+    }
   }
   async function setDemoMode(enable){
     if(enable){
@@ -203,6 +279,8 @@
     if(!enable&&!configured){flash('A Supabase connection is required.',true);return false;}
     if(demo===enable)return true;
     modeEpoch++;demo=enable;
+    if(enable)closeSyncChannel();
+    else{brandCheckedAt=0;openSyncChannel();}
     if(enable)demoBrand=siteBrand;else demoBrand=null;
     applyBrand(enable?demoBrand:siteBrand);
     pub=null;admin=null;lastError='';searchText='';attendanceSearch='';attendanceDropdownOpen=false;
@@ -517,7 +595,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const showToggle=!searchText.trim()&&arr.length>5?`<button type="button" class="btn ${showAllProfiles?'btn-secondary':'btn-primary'} btn-small profile-show-all" data-action="toggle-profiles" aria-expanded="${showAllProfiles}" aria-controls="profile-results">${showAllProfiles?'↑ Show first 5':`↓ Show all ${arr.length} players`}</button>`:'';
     return `<div class="form-stack"><label class="label-input" for="player-search">Find player</label><input class="field" id="player-search" type="search" placeholder="Search any name" value="${safe(searchText)}" autocomplete="off"/><div class="profile-list-meta"><strong class="profile-count" id="profile-result-count">${searchText.trim()?`${count} matching ${count===1?'player':'players'}`:`Showing ${visible.length} of ${arr.length} players`}</strong>${showToggle}</div></div><div class="admin-roster" id="profile-results" style="margin-top:15px">${playerCards||'<p class="subtle">No matching player profiles.</p>'}</div>`;
   }
-  async function act(job,message){if(mutating)return false;mutating=true;try{await job();flash(message);await refresh();return true;}catch(e){flash(errText(e),true);return false;}finally{mutating=false;}}
+  async function act(job,message){if(mutating)return false;mutating=true;try{await job();flash(message);await refresh();announceChange(message==='Website theme saved for everyone.'?'theme':'state');return true;}catch(e){flash(errText(e),true);return false;}finally{mutating=false;}}
   async function handleGenerate(){const e=pub.event;if(!e||!admin)return;const players=priorityRoster().slice(0,e.capacity).map(r=>admin.players.find(p=>p.id===r.id));if(players.some(p=>!p)){flash('Unable to load player ratings. Refresh first.',true);return;}const groups=window.RallyMath.makeTeams(players,e.team_size,admin.previous_teams||[],e.court_mode==='split'?'split':'mixed',{balanceWomen:admin.gender_balance===true});const range=window.RallyMath.spread(groups);const missing=groups.flat().filter(p=>p.is_placeholder).length;const selected=groups.flat().filter(p=>!p.is_placeholder).length;const womenCounts=groups.map(g=>g.filter(p=>!p.is_placeholder&&p.gender==='Woman').length);if(!confirm(`Publish six balanced teams for round ${e.round_number||1}?\n\n${selected} registered players · ${missing} unrated sub ${missing===1?'slot':'slots'}.\nCourt layout: ${e.court_mode==='split'?'Court 1 competitive · Court 2 beginner-friendly':'Mixed courts with advanced players distributed'}.\n${e.court_mode==='split'?'Teams are balanced within each court.':'Registered-player average MMR spread: '+range+' points.'}\n${admin.gender_balance?'Balance women: ON · Women per team '+womenCounts.join(' / '):'Balance women: OFF'}. MMR balance remains the priority.\nRecent teammates are separated when possible.\n\nSub placeholders NEVER gain/lose MMR and do not appear on the leaderboard. The ${selected} selected players have the fewest completed rounds (check-in order breaks ties).`))return;await act(()=>api.publish(e.id,groups),'Balanced teams published to both courts. Unrated sub spots are clearly marked.');}
   function scoreValues(form){
     const rawA=form.querySelector('[name=score-a]')?.value?.trim()??'';
@@ -651,8 +729,20 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const hash=window.location.hash.substring(1);
     if(['signup','courts','who','leaderboard','admin'].includes(hash))switchTab(hash);
     if(requestedDemo)await setDemoMode(true);
-    setInterval(()=>{if(!mutating&&document.visibilityState==='visible'&&!document.activeElement?.matches('input,select'))refresh();},12000);
-    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!mutating)refresh();});
+    openSyncChannel();
+    // Backup refresh only once per minute. Paused in background tabs and
+    // while typing in editable fields to avoid losing unsaved form values.
+    setInterval(()=>{
+      if(!mutating&&document.visibilityState==='visible'&&!document.activeElement?.matches('input,select,textarea,[contenteditable="true"]'))refresh();
+    },BACKUP_REFRESH_MS);
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='hidden'){closeSyncChannel();return;}
+      if(!demo)openSyncChannel();
+      if(!mutating)refresh(true);
+    });
+    window.addEventListener('online',()=>{if(document.visibilityState==='visible'){openSyncChannel();if(!mutating)refresh(true);}});
+    window.addEventListener('offline',closeSyncChannel);
+    window.addEventListener('pagehide',closeSyncChannel);
   }
   init().catch(e=>flash(errText(e),true));
 })();
