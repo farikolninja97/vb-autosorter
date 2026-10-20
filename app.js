@@ -40,7 +40,7 @@
   function placementStatus(p){const played=matchesPlayed(p),remaining=placementLeft(p);return remaining?`Placement ${played}/${PLACEMENT_GAMES} · ${remaining} ${remaining===1?'match':'matches'} remaining`:`Placement complete · ${played} played`;}
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
-  const APP_VERSION='1.13';
+  const APP_VERSION='1.14';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
@@ -83,6 +83,16 @@
       if(p.mmr!==mmr&&demoData.event?.status==='locked'&&demoData.teams.some(t=>t.players.some(tp=>tp.id===pid)))throw Error('Cannot modify MMR during an active round. Position changes are allowed.');
       p.mmr=mmr;p.position=position;
     });const {error}=await db.rpc('vmm_update_player',{p_player_id:pid,p_mmr:mmr,p_position:position});if(error)throw error;},
+    async deletePlayer(pid){if(demo)return demoAction(()=>{
+      const p=demoData.players.find(p=>p.id===pid);
+      if(!p)throw Error('Player not found.');
+      if(matchesPlayed(p)>0)throw Error('This player has match history and cannot be deleted. Historical results must remain accurate.');
+      if(demoData.event?.status==='locked'&&demoData.teams.some(t=>t.players.some(tp=>!tp.is_placeholder&&tp.id===pid)))throw Error('This player is assigned to an active round. Finish or reset the round first.');
+      demoData.signups=demoData.signups.filter(s=>s.player_id!==pid);
+      demoData.players=demoData.players.filter(player=>player.id!==pid);
+    });
+      const {error}=await db.rpc('vmm_admin_delete_player',{p_player_id:pid});if(error)throw error;
+    },
     async createEvent(title,date,size){if(demo)return demoAction(()=>{if(demoData.event)throw Error('Finish the existing event first.');demoData.event={id:id(),title,date,team_size:size,court_mode:'mixed',round_number:1,duration_minutes:180,status:'open'};demoData.signups=[];demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.archives=[];});const {error}=await db.rpc('vmm_create_event',{p_title:title,p_date:date,p_team_size:size});if(error)throw error;},
     async setCourtMode(eventId,mode){
       if(!['mixed','split'].includes(mode))throw Error('Invalid court setup.');
@@ -426,9 +436,12 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const playerCards=visible.map(p=>{
       const locked=e?.status==='locked'&&pub.teams.some(t=>t.players.some(tp=>tp.id===p.id));
       const checked=activeSet.has(p.id);
+      const hasHistory=matchesPlayed(p)>0;
+      const cannotDelete=hasHistory||locked;
+      const deleteTip=hasHistory?'Cannot delete: recorded matches must be preserved.':locked?'Cannot delete while assigned to an active round.':'Permanently remove profile and its saved MMR.';
       return `<div class="player-edit" data-name="${safe(p.name.toLowerCase())}"><div class="player-edit-info"><div class="player-edit-name">${safe(p.name)} ${checked?statusPill('Checked in','win'):''}</div><div class="player-edit-record">${p.wins}W / ${p.losses}L · ${safe(p.position||'Unspecified')}</div><div class="placement-progress"><span class="placement-status ${placementLeft(p)?'is-placing':'is-placed'}">${safe(placementStatus(p))}</span><span class="placement-eligibility">${safe(challengerStatus(p))}</span></div></div>
-        <div class="profile-controls"><div class="profile-selects"><label>Preferred position<select class="profile-position field" aria-label="Position for ${safe(p.name)}">${positionOptions(p.position||'Unspecified')}</select></label><label>Skill preset<select class="tier-preset field" aria-label="Skill preset for ${safe(p.name)}" ${locked?'disabled':''}><option value="">Keep rating</option><option value="1000">Beginner</option><option value="1200">Intermediate</option><option value="1500">Advanced</option></select></label><label>MMR<input class="profile-mmr field" aria-label="MMR for ${safe(p.name)}" type="number" min="500" max="2500" step="1" value="${p.mmr}" ${locked?'disabled':''}/></label></div>
-        <div class="button-row"><button class="btn btn-small btn-secondary save-profile" data-action="save-profile" data-player="${safe(p.id)}">Save profile</button>${e?.status==='open'?(checked?`<button class="btn btn-small btn-danger" data-action="remove-signup" data-player="${safe(p.id)}">Remove check-in</button>`:`<button class="btn btn-small btn-primary" data-action="checkin-player" data-player="${safe(p.id)}">＋ Check in</button>`):''}</div></div></div>`;
+        <div class="profile-controls"><div class="profile-selects"><label>Preferred position<select class="profile-position field" aria-label="Position for ${safe(p.name)}">${positionOptions(p.position||'Unspecified')}</select></label><label>Skill preset<select class="tier-preset field" aria-label="Skill preset for ${safe(p.name)}" ${locked?'disabled':''}><option value="">Keep rating</option><option value="1000">Beginner</option><option value="1200">Intermediate</option><option value="1500">Advanced</option></select></label><label>Edit MMR<input class="profile-mmr field" aria-label="Edit MMR for ${safe(p.name)}" type="number" min="500" max="2500" step="1" value="${p.mmr}" ${locked?'disabled':''}/></label></div>
+        <div class="button-row profile-action-row"><button type="button" class="btn btn-small btn-primary save-profile" data-action="save-profile" data-player="${safe(p.id)}">Save MMR / position</button>${e?.status==='open'?(checked?`<button type="button" class="btn btn-small btn-secondary" data-action="remove-signup" data-player="${safe(p.id)}">Remove check-in</button>`:`<button type="button" class="btn btn-small btn-secondary" data-action="checkin-player" data-player="${safe(p.id)}">＋ Check in</button>`):''}<button type="button" class="btn btn-small btn-danger profile-delete" data-action="delete-player" data-player="${safe(p.id)}" aria-label="Permanently delete ${safe(p.name)}" title="${safe(deleteTip)}" ${cannotDelete?'disabled':''}>Delete player</button></div>${hasHistory?'<p class="profile-delete-note">Deletion disabled: this player has recorded matches. MMR can still be edited.</p>':locked?'<p class="profile-delete-note">Deletion disabled while assigned to an active round.</p>':'<p class="profile-delete-note">Deleting a player permanently removes their profile and saved MMR. Check-in removal above keeps their MMR.</p>'}</div></div>`;
     }).join('');
     const count=matching.length;
     const showToggle=!searchText.trim()&&arr.length>5?`<button type="button" class="btn ${showAllProfiles?'btn-secondary':'btn-primary'} btn-small profile-show-all" data-action="toggle-profiles" aria-expanded="${showAllProfiles}" aria-controls="profile-results">${showAllProfiles?'↑ Show first 5':`↓ Show all ${arr.length} players`}</button>`:'';
@@ -479,6 +492,19 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'toggle-profiles':{showAllProfiles=!showAllProfiles;const panel=document.querySelector('#admin-body .admin-roster');if(panel){const input=document.querySelector('#player-search');const focusId=document.activeElement?.id;const pos=input?.selectionStart;$('#admin-body').innerHTML=renderAdmin();if(focusId==='player-search'){const restored=$('#player-search');restored?.focus();if(pos!==null&&pos!==undefined)restored?.setSelectionRange(pos,pos);}}break;}
     case 'court-mode':{if(!adminGranted||pub?.event?.status!=='open')break;const mode=btn.dataset.mode;if(!['mixed','split'].includes(mode))break;await act(()=>api.setCourtMode(pub.event.id,mode),mode==='mixed'?'Balanced mixed courts selected.':'Competitive / beginner courts selected.');break;}
     case 'save-profile':{const pid=btn.dataset.player;const card=btn.closest('.player-edit');const mmr=Number(card.querySelector('.profile-mmr').value);const position=card.querySelector('.profile-position').value;if(!Number.isInteger(mmr)||mmr<500||mmr>2500||!POSITIONS.includes(position)){flash('Choose a valid position and MMR between 500 and 2500.',true);return;}await act(()=>api.updatePlayer(pid,mmr,position),'Player profile saved.');break;}
+    case 'delete-player':{
+      if(!adminGranted||!admin?.players)break;
+      const pid=btn.dataset.player,player=admin.players.find(p=>p.id===pid);
+      if(!player)break;
+      if(matchesPlayed(player)>0){flash('Cannot delete a player with recorded matches. Historical match data must be preserved.',true);break;}
+      const isPlaying=pub?.event?.status==='locked'&&pub.teams.some(t=>t.players.some(tp=>tp.id===pid));
+      if(isPlaying){flash('Finish or reset the active round before deleting this player.',true);break;}
+      const msg=`Are you sure you want to permanently delete ${player.name}?\n\nThis deletes their entire player profile, saved MMR (${player.mmr}), preferred position, and any current check-in.\n\nThis CANNOT be undone.\n\nChoose Cancel to keep their MMR.`;
+      if(!confirm(msg))break;
+      const success=await act(()=>api.deletePlayer(pid),`${player.name} was permanently deleted, including their MMR.`);
+      if(success){searchText='';showAllProfiles=false;$('#admin-body').innerHTML=renderAdmin();}
+      break;
+    }
     case 'attendance-select':{
       if(btn.disabled||!adminGranted||pub?.event?.status!=='open')break;
       const player=admin.players.find(p=>p.id===btn.dataset.player);if(!player)break;

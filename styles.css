@@ -695,3 +695,12 @@ html[data-theme=dark] .placement-status.is-placing{background:#49391d;color:#ffd
 html[data-theme=dark] .placement-eligibility{color:#a9bdd0}
 html[data-theme=dark] .ranking-placement.is-placing{color:#ffd38c}
 @media(max-width:550px){.placement-progress{gap:4px 8px}.placement-progress span{font-size:10px}.ranking-placement{font-size:9px}}
+
+
+/* V1.14: admin profile actions and permanent-delete safety messages */
+.player-edit .profile-action-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.player-edit .profile-action-row .profile-delete{margin-left:auto}
+.profile-delete-note{margin:10px 0 0;color:var(--text-muted,#64748b);font-size:11px;line-height:1.5}
+.player-edit .profile-delete:disabled{opacity:.44;cursor:not-allowed}
+[data-theme="dark"] .profile-delete-note{color:#b4c5da}
+@media(max-width:580px){.player-edit .profile-action-row .profile-delete{margin-left:0}.player-edit .profile-action-row .btn{flex:1 1 auto}}
