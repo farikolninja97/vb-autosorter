@@ -1,4 +1,4 @@
-/* RallyRank V1.06 — mixed or skill-split courts, score-margin-adjusted MMR. */
+/* RallyRank V1.15 — private gender-aware optional team distribution + skill balance. */
 (function(root){
   'use strict';
   const TEAM_COUNT=6;
@@ -33,7 +33,7 @@
   // The first three teams play on Court 1; the last three play on Court 2.
   // In mixed mode, every court receives advanced players where possible.
   // In split mode, the stronger half goes to Court 1, weaker half to Court 2.
-  function score(teams,priorPairs,teamSize,mode){
+  function score(teams,priorPairs,teamSize,mode,balanceWomen=false){
     const avgs=teams.map(teamAverage);
     const blocks=mode==='split'?[[0,1,2],[3,4,5]]:[[0,1,2,3,4,5]];
     let ratingCost=0;
@@ -59,11 +59,29 @@
       const courtDifference=Math.abs(advanced.slice(0,3).reduce((a,b)=>a+b,0)-advanced.slice(3).reduce((a,b)=>a+b,0));
       ratingCost+=unevenTeams*110000+courtDifference*courtDifference*170000;
     }
+    if(balanceWomen){
+      // Optimize the number of SELF-RECORDED women per team, never guessing
+      // missing genders and never including unrated placeholders.
+      // With split courts, preserve the stronger/weaker court assignment and
+      // distribute women as evenly as possible within each three-team court.
+      const genderBlocks=mode==='split'?[[0,1,2],[3,4,5]]:[[0,1,2,3,4,5]];
+      for(const block of genderBlocks){
+        const counts=block.map(i=>realPlayers(teams[i]).filter(p=>p.gender==='Woman').length);
+        const goal=counts.reduce((sum,n)=>sum+n,0)/block.length;
+        ratingCost+=counts.reduce((sum,n)=>sum+(n-goal)**2,0)*160000;
+      }
+      if(mode==='mixed'){
+        const c1=teams.slice(0,3).flat().filter(p=>!isPlaceholder(p)&&p.gender==='Woman').length;
+        const c2=teams.slice(3).flat().filter(p=>!isPlaceholder(p)&&p.gender==='Woman').length;
+        ratingCost+=(c1-c2)**2*24000;
+      }
+    }
     return ratingCost+repeats*1800;
   }
-  function makeTeams(players,teamSize,previousTeams=[],mode='mixed'){
+  function makeTeams(players,teamSize,previousTeams=[],mode='mixed',options={}){
     if(!Number.isInteger(teamSize)||teamSize<2||teamSize>6)throw Error('Team size must be 2–6.');
     if(!['mixed','split'].includes(mode))throw Error('Unknown court balancing mode.');
+    const balanceWomen=options?.balanceWomen===true;
     const capacity=TEAM_COUNT*teamSize;
     if(players.length<TEAM_COUNT)throw Error('At least six real players are needed (one per team).');
     const selected=players.slice(0,capacity);
@@ -113,7 +131,7 @@
         // Alternate between courts first to distribute advanced players.
         assign(sorted,[0,3,1,4,2,5]);
       }
-      let current=score(teams,priorPairs,teamSize,mode);
+      let current=score(teams,priorPairs,teamSize,mode,balanceWomen);
       for(let n=0;n<450;n++){
         const a=Math.floor(Math.random()*TEAM_COUNT),b=Math.floor(Math.random()*TEAM_COUNT);
         if(a===b||(mode==='split'&&Math.floor(a/3)!==Math.floor(b/3)))continue;
@@ -121,7 +139,7 @@
         const bReal=teams[b].map((p,i)=>!isPlaceholder(p)?i:-1).filter(i=>i>=0);
         const ia=aReal[Math.floor(Math.random()*aReal.length)],ib=bReal[Math.floor(Math.random()*bReal.length)];
         [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
-        const next=score(teams,priorPairs,teamSize,mode);
+        const next=score(teams,priorPairs,teamSize,mode,balanceWomen);
         if(next<current){current=next;}
         else [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
       }

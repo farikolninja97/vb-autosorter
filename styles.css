@@ -704,3 +704,16 @@ html[data-theme=dark] .ranking-placement.is-placing{color:#ffd38c}
 .player-edit .profile-delete:disabled{opacity:.44;cursor:not-allowed}
 [data-theme="dark"] .profile-delete-note{color:#b4c5da}
 @media(max-width:580px){.player-edit .profile-action-row .profile-delete{margin-left:0}.player-edit .profile-action-row .btn{flex:1 1 auto}}
+
+/* V1.15 — Admin-only optional women balancing */
+.gender-balance-panel {display:flex;gap:12px;align-items:flex-start;justify-content:space-between;border:1px solid var(--border,#50617a);border-radius:14px;background:var(--panel,#182b45);padding:14px 16px;margin:14px 0 16px;}
+.gender-balance-check {display:flex;gap:12px;align-items:flex-start;cursor:pointer;flex:1;min-width:0;}
+.gender-balance-check input {width:22px;height:22px;min-width:22px;accent-color:#e44355;margin-top:2px;cursor:pointer;}
+.gender-balance-check strong {display:block;font-size:0.98rem;color:inherit;}
+.gender-balance-check small {display:block;line-height:1.5;max-width:580px;color:var(--muted,#a6b8d6);margin-top:4px;}
+.gender-balance-panel .small-caps {flex-shrink:0;margin-top:4px;}
+@media(max-width:640px){.gender-balance-panel{flex-direction:column}.gender-balance-panel .small-caps{display:none}}
+
+/* Four profile fields stay legible on desktop and on narrow screens. */
+.profile-selects{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:650px){.profile-selects label:first-child{grid-column:auto}}
