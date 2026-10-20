@@ -730,3 +730,35 @@ html[data-theme="dark"] .court-roster .team-average-label{color:#add1fc}
 html[data-theme="dark"] .court-roster .team-average-mmr strong{color:#f4f9ff}
 html[data-theme="dark"] .court-roster .team-average-mmr small{color:#b9d0ed}
 @media(max-width:650px){.court-roster .team-average-mmr{padding:9px 11px}.court-roster .team-average-mmr strong{font-size:19px}.court-roster .team-average-mmr small{font-size:10px}}
+
+
+/* V1.19 public checked-in roster: names only, all non-admin visitors can search. */
+.who-public-label{font-size:10px;font-weight:900;letter-spacing:1.1px;border:1px solid var(--border,#d7e2ef);border-radius:100px;padding:7px 11px;color:var(--muted,#60758d);white-space:nowrap}
+.who-panel{background:var(--panel,#fff);border:1px solid var(--border,#d9e2ee);border-radius:16px;padding:22px;margin-top:14px;box-shadow:0 8px 24px #0010240b}
+.who-overview{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:21px;padding-bottom:18px;border-bottom:1px solid var(--border,#d9e2ee)}
+.who-eyebrow{font-size:10px;font-weight:900;letter-spacing:1.7px;color:var(--scarlet,#cd3551)}
+.who-overview h3{margin:5px 0 4px;font-size:24px;color:var(--navy,#102448);font-weight:900}
+.who-overview p{font-size:12px;color:var(--muted,#657891);margin:0}
+.who-attendance-count{min-width:110px;border-radius:12px;background:#e9f5fa;color:#0d667a;padding:11px 13px;text-align:center;display:flex;flex-direction:column;gap:1px}
+.who-attendance-count strong{font-size:28px;font-weight:900;line-height:1.2}
+.who-attendance-count span{font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.8px}
+.who-search-container{display:flex;flex-direction:column;gap:7px;max-width:550px;margin-bottom:15px}
+.who-search-container .field{width:100%;min-height:44px}
+.who-search-status{font-size:12px;color:var(--muted,#647b93)}
+.who-grid{list-style:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0;padding:0;max-height:600px;overflow-y:auto}
+.who-person{display:flex;gap:9px;align-items:center;border:1px solid var(--border,#d9e2ef);border-radius:9px;padding:12px 13px;background:#f5f9fd;min-width:0;color:#163154}
+.who-person-number{color:#7991aa;font-size:11px;font-weight:850;flex:none;min-width:18px}
+.who-person strong{font-size:13px;line-height:1.35;min-width:0;overflow-wrap:anywhere;flex:1}
+.who-person-confirmation{font-size:11px;white-space:nowrap;font-weight:900;color:#126e52}
+.who-no-results{grid-column:1/-1;background:#f3f7fb;border:1px dashed #cad8e6;border-radius:8px;padding:28px;text-align:center;color:#597089;font-size:13px}
+.who-help{font-size:12px;line-height:1.6;color:var(--muted,#6a7c92);margin:17px 0 0}
+[data-theme="dark"] .who-panel{background:#132338;border-color:#344860;box-shadow:none}
+[data-theme="dark"] .who-overview{border-color:#344860}
+[data-theme="dark"] .who-overview h3{color:#f4f9ff}
+[data-theme="dark"] .who-attendance-count{background:#153d4d;color:#7de5e8}
+[data-theme="dark"] .who-person{background:#1b2e44;color:#e9f4ff;border-color:#354d65}
+[data-theme="dark"] .who-person-number{color:#9ab4cc}
+[data-theme="dark"] .who-person-confirmation{color:#7cd9b3}
+[data-theme="dark"] .who-no-results{background:#1b3047;color:#b3c6dc;border-color:#3b536c}
+@media(max-width:880px){.who-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:570px){.who-panel{padding:15px}.who-grid{grid-template-columns:1fr;max-height:none}.who-overview h3{font-size:21px}.who-attendance-count{min-width:92px}.who-attendance-count strong{font-size:25px}.who-person{padding:12px}}

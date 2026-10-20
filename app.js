@@ -59,7 +59,8 @@
   function placementStatus(p){const played=matchesPlayed(p),remaining=placementLeft(p);return remaining?`Placement ${played}/${PLACEMENT_GAMES} · ${remaining} ${remaining===1?'match':'matches'} remaining`:`Placement complete · ${played} played`;}
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
-  const APP_VERSION='1.17';
+  let publicAttendanceSearch='';
+  const APP_VERSION='1.19';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
@@ -69,12 +70,14 @@
   function storeDemo(){try{localStorage.setItem('rallyrank-demo-v107',JSON.stringify(demoData));}catch(e){}}
   function demoState(){const x=demoData;return {event:x.event?{...x.event,player_count:x.signups.length,capacity:x.event.team_size*6,completed_rounds:x.archives.length}:null,
     roster:x.signups.map(s=>{const p=x.players.find(p=>p.id===s.player_id);return {id:p.id,name:p.name,checked_at:s.checked_at,team_id:x.teams.find(t=>t.players.some(y=>y.id===p.id))?.id||null,rounds_played:x.archives.filter(a=>a.teams.some(t=>t.players.some(y=>y.id===p.id))).length};}),
+    // Demo mirrors the safe, names-only attendance field returned by the public RPC.
+    checked_in_names:x.signups.map(s=>x.players.find(p=>p.id===s.player_id)?.name).filter(Boolean).sort((a,b)=>a.localeCompare(b)),
     teams:x.teams,matches:x.matches.map(({mmr_changes,...match})=>match)};}
   function demoLeaderboard(){return [...demoData.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name)).map(p=>({id:p.id,name:p.name,position:p.position||'Unspecified',wins:p.wins,losses:p.losses,mmr:p.mmr}));}
   function average(team){const registered=team.players.filter(p=>!p.is_placeholder).map(p=>demoData.players.find(x=>x.id===p.id));if(!registered.length)throw Error('Each team needs a registered player.');return registered.reduce((n,p)=>n+p.mmr,0)/registered.length;}
   function demoAction(fn){fn();storeDemo();return Promise.resolve(null);}
   const api={
-    async getPublic(){if(demo)return demoState();if(!db)return {event:null,roster:[],teams:[],matches:[]};const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;return data;},
+    async getPublic(){if(demo)return demoState();if(!db)return {event:null,roster:[],checked_in_names:[],teams:[],matches:[]};const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;return data;},
     async getAdmin(){if(demo)return {...demoState(),players:demoData.players,match_changes:demoData.matches.flatMap(m=>(m.mmr_changes||[]).map(c=>({...c,match_id:m.id}))),previous_teams:demoData.archives.at(-1)?.teams.map(t=>t.players.map(p=>p.id))||[],gender_balance:demoData.event?.gender_balance===true};
       const {data,error}=await db.rpc('vmm_get_admin_state');if(error)throw error;
       const {data:changes,error:changesError}=await db.rpc('vmm_get_admin_match_changes');if(changesError)throw changesError;
@@ -235,12 +238,35 @@
     const worked=await act(()=>api.report(m.id,m.team_a_id,scoreA,scoreB),`Practice score: Court ${m.court}, Match ${m.order} — ${scoreA}–${scoreB}. Sample player ratings updated only on this device.`);
     if(worked)switchTab('courts');
   }
-  function switchTab(next){if(!['signup','courts','leaderboard','admin'].includes(next))next='courts';if(isPrivateTab(next)&&!adminGranted)next='courts';tab=next;document.querySelectorAll('.nav-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${tab}`));if(pub)render();window.location.hash=tab;}
+  function switchTab(next){if(!['signup','courts','who','leaderboard','admin'].includes(next))next='courts';if(isPrivateTab(next)&&!adminGranted)next='courts';tab=next;document.querySelectorAll('.nav-tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${tab}`));if(pub)render();window.location.hash=tab;}
   function teamName(t){return t?`Team ${t.number}`:'TBD';}
   function teamById(teamId){return pub?.teams?.find(t=>t.id===teamId)||null;}
   function statusPill(text,cls=''){return `<span class="pill ${cls}">${safe(text)}</span>`;}
   function render(){if(!pub)return;document.body.dataset.activeTab=tab;const e=pub.event;$('#event-status').textContent=e?`${e.status==='open'?'SIGNUPS OPEN':'MATCHES IN PROGRESS'} · ${niceDate(e.date).toUpperCase()} · ROUND ${e.round_number||1}`:'VOLLEYBALL MATCHMAKER';$('#hero-title').innerHTML=e?`${safe(e.title)}<br/><em>${e.status==='open'?'Find your squad.':'Game on.'}</em>`:'Everybody plays.<br/><em>Every point counts.</em>';$('#hero-description').textContent=e?`Two courts. Three teams per court. ${e.team_size} spots per team, with fill-in substitutes when needed. Every team gets two games.`:'Follow live volleyball teams, rotations, and match scores on both courts.';$('#mode-indicator').textContent=demo?'DEMO MODE':'LIVE SYNC';$('#demo-banner').hidden=!(demo&&adminGranted);const toggle=$('#demo-toggle');toggle.hidden=!adminGranted||!configured;toggle.textContent=demo?'✓ Demo active':'▶ Try demo';toggle.classList.toggle('demo-is-active',demo);toggle.setAttribute('aria-label',demo?'Demo mode active; return to live site':'Start demo mode');toggle.setAttribute('aria-pressed',String(demo));const exitDemo=document.querySelector('[data-action=exit-demo]');if(exitDemo)exitDemo.hidden=!configured;const demoHint=$('#demo-hint');if(demo&&demoHint)demoHint.textContent=pub?.event?.status==='locked'?`${pub.matches.filter(m=>m.winner_team_id).length} of 6 practice matches complete. Simulate another result or use Live Courts → Session Management to undo. Please note: demo changes never affect the live database.`:`${pub?.roster?.length||0} of ${pub?.event?.capacity||36} sample spots filled. Choose court mode in Live Courts, then build teams.`;
-$('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').innerHTML=renderCourts();$('#leaderboard-body').innerHTML=adminGranted?renderLeaderboard():'';$('#admin-body').innerHTML=renderAdmin();}
+$('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').innerHTML=renderCourts();$('#who-body').innerHTML=renderPublicAttendance();$('#leaderboard-body').innerHTML=adminGranted?renderLeaderboard():'';$('#admin-body').innerHTML=renderAdmin();}
+  // Public attendance is a deliberately limited display-name list. It never includes IDs,
+  // MMR, wins/losses, gender, timestamps, player profiles, or write access.
+  function safeCheckedInNames(){
+    if(!pub?.event || !Array.isArray(pub.checked_in_names))return [];
+    return pub.checked_in_names.filter(n=>typeof n==='string'&&n.trim()).slice().sort((a,b)=>a.localeCompare(b));
+  }
+  function renderPublicAttendanceItems(){
+    const names=safeCheckedInNames();
+    const query=publicAttendanceSearch.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
+    const filtered=names.filter(n=>n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase().includes(query));
+    const status=$('#who-search-status');if(status)status.textContent=query?`${filtered.length} matching ${filtered.length===1?'name':'names'}`:`${names.length} checked in`;
+    const list=filtered.map((name,i)=>`<li class="who-person"><span class="who-person-number">${i+1}</span><strong>${safe(name)}</strong><span class="who-person-confirmation" aria-label="Checked in">✓ Here</span></li>`).join('');
+    return list||`<li class="who-no-results">${query?'No checked-in names match your search. Try a different spelling.':'No players have been checked in yet.'}</li>`;
+  }
+  function renderPublicAttendance(){
+    const heading='<div class="section-top"><div><h2 id="who-title" class="section-title">Who’s here today?</h2><p class="section-sub">Look up your name to confirm you’re checked in for the current volleyball session.</p></div><span class="who-public-label">PUBLIC VIEW</span></div>';
+    if(!pub?.event)return heading+'<div class="empty"><strong>No active session</strong><p>When an admin opens a volleyball session, checked-in names will appear here.</p></div>';
+    // An older database may still conceal attendance from anonymous viewers. Do not
+    // misleadingly render "0 people" until upgrade-v1.19.sql is installed.
+    if(!Array.isArray(pub.checked_in_names))return heading+'<div class="empty"><strong>Attendance list needs updating</strong><p>The website was updated, but Supabase still needs upgrade-v1.19.sql before names can be shown publicly.</p></div>';
+    const names=safeCheckedInNames();
+    return heading+`<section class="who-panel" aria-label="Current checked-in players"><div class="who-overview"><div><span class="who-eyebrow">CURRENT SESSION</span><h3>${safe(pub.event.title||'Open Volleyball')}</h3><p>${safe(niceDate(pub.event.date))} · Round ${Number(pub.event.round_number)||1} · ${pub.event.status==='open'?'Check-in open':'Games in progress'}</p></div><div class="who-attendance-count"><strong>${names.length}</strong><span>Checked in</span></div></div><div class="who-search-container"><label for="who-search" class="label-input">Find yourself on the list</label><input class="field" id="who-search" type="search" placeholder="Start typing your name..." autocomplete="off" value="${safe(publicAttendanceSearch)}" aria-controls="who-players" /><span id="who-search-status" class="who-search-status" aria-live="polite">${names.length} checked in</span></div><ul id="who-players" class="who-grid" aria-label="Names checked in for this session">${renderPublicAttendanceItems()}</ul><p class="who-help">Can’t find your name? Ask an admin to check you in. Only admins can add or remove players.</p></section>`;
+  }
   // Attendance is an admin-only page, not a public name-based signup form.
   function renderSignup(){
     if(!adminGranted)return '';
@@ -365,7 +391,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   function renderCourts(){
     const e=pub.event;
     const canScore=Boolean(adminGranted&&e?.status==='locked');
-    const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">Both court rosters first, then the match schedule. Every team plays twice.</p></div><div class="live-courts-actions">${adminGranted?'<button class="btn btn-small btn-secondary" type="button" data-action="jump-ratings">🔒 Private results ↓</button>':''}<button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>`;
+    const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">Both court rosters first, then the match schedule. Every team plays twice.</p></div><div class="live-courts-actions">${adminGranted?'<button class="btn btn-small btn-secondary" type="button" data-action="jump-ratings">🔒 Private results ↓</button>':''}<button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>`;
     // Ratings belong ONLY to Live Courts, never to the Admin tab. Keep this block after scores.
     const privateTools=adminGranted?`<div class="courts-admin-section" id="court-admin-tools">${renderPrivateMatchRatings()}${renderSessionManagement()}</div>`:'';
     if(!e)return `${title}<div class="empty"><strong>No active session</strong><p>Once check-in opens, the court schedule will show here.</p></div>${privateTools}`;
@@ -529,6 +555,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'demo-generate':if(demo)await demoBuildTeams();break;
     case 'demo-score':if(demo)await demoScoreNext();break;
     case 'refresh':await refresh();break;
+    case 'view-attendance':switchTab('who');break;
     case 'generate':await handleGenerate();break;
     case 'jump-ratings':{document.querySelector('#view-courts #live-private-results')?.scrollIntoView({behavior:'smooth',block:'start'});break;}
     case 'rank-filter':{if(!adminGranted)break;const id=btn.dataset.rank;if(id!=='All'&&!RANK_TIERS.some(t=>t.id===id))break;leaderboardTier=id;$('#leaderboard-body').innerHTML=renderLeaderboard();break;}
@@ -590,7 +617,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'logout':if(db)await db.auth.signOut();user=null;admin=null;adminGranted=false;if(demo)await setDemoMode(false);await refresh(true);flash('Signed out.');break;
   }});
   document.addEventListener('change',async ev=>{if(ev.target?.id==='gender-balance-toggle'){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setGenderBalance(pub.event.id,enabled),enabled?'Women balancing enabled for the next round.':'Women balancing disabled.');return;}if(ev.target?.classList?.contains('tier-preset')&&ev.target.value){ev.target.closest('.profile-controls').querySelector('.profile-mmr').value=ev.target.value;}if(ev.target?.id==='leaderboard-filter'&&adminGranted){leaderboardPosition=ev.target.value;$('#leaderboard-body').innerHTML=renderLeaderboard();}});
-  document.addEventListener('input',ev=>{if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=Boolean(attendanceSearch.trim());attendanceActive=0;updateAttendanceSuggestions();}if(ev.target?.closest('.live-score-form'))updateScorePreview(ev.target.closest('.live-score-form'));if(ev.target?.id==='player-search'){searchText=ev.target.value;const pos=ev.target.selectionStart;$('#admin-body').innerHTML=renderAdmin();const restored=$('#player-search');restored?.focus();if(pos!==null)restored?.setSelectionRange(pos,pos);}});
+  document.addEventListener('input',ev=>{if(ev.target?.id==='who-search'){publicAttendanceSearch=ev.target.value;const ul=$('#who-players');if(ul)ul.innerHTML=renderPublicAttendanceItems();}if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=Boolean(attendanceSearch.trim());attendanceActive=0;updateAttendanceSuggestions();}if(ev.target?.closest('.live-score-form'))updateScorePreview(ev.target.closest('.live-score-form'));if(ev.target?.id==='player-search'){searchText=ev.target.value;const pos=ev.target.selectionStart;$('#admin-body').innerHTML=renderAdmin();const restored=$('#player-search');restored?.focus();if(pos!==null)restored?.setSelectionRange(pos,pos);}});
   document.addEventListener('keydown',ev=>{
     if(ev.target?.id!=='attendance-search')return;
     if(ev.key==='Escape'){attendanceDropdownOpen=false;updateAttendanceSuggestions();return;}
@@ -622,7 +649,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       db.auth.onAuthStateChange((_event,session)=>{user=session?.user||null;if(!user){adminGranted=false;admin=null;if(demo){setDemoMode(false).catch(()=>{});}else{enforceAdminNavigation();if(pub)render();}}});}
     await refresh();
     const hash=window.location.hash.substring(1);
-    if(['signup','courts','leaderboard','admin'].includes(hash))switchTab(hash);
+    if(['signup','courts','who','leaderboard','admin'].includes(hash))switchTab(hash);
     if(requestedDemo)await setDemoMode(true);
     setInterval(()=>{if(!mutating&&document.visibilityState==='visible'&&!document.activeElement?.matches('input,select'))refresh();},12000);
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!mutating)refresh();});
