@@ -1,6 +1,5 @@
-/* RallyRank V1.17 · COS Volleyball-inspired optional visual theme.
-   Original artwork, layout, and styles. Based on the public reference site's palette
-   and atmosphere; not affiliated with Colorado Springs Pickup Volleyball. */
+/* RallyRank V1.18 · COS event theme with shared artwork from cosvolleyball.github.io.
+   Original RallyRank look remains a fully supported alternative. */
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
 
 /* Admin design choices use neutral styling in EITHER design. */
@@ -151,3 +150,35 @@ html[data-brand="cos"] #view-courts #live-private-results{border-top-color:#008b
 html[data-brand="cos"][data-theme="dark"] #view-courts #live-private-results{border-top-color:#19d4e3}
 html[data-brand="cos"] .court-mode-option:focus-visible{outline-color:#19d4e3}
 html[data-brand="cos"][data-theme="dark"] .team-title{color:#eaffff}
+
+
+/* V1.18 shared-event artwork & logo fix. Keep all image sizing independent of inherited SVG transforms. */
+.brand-icon{position:relative;flex:0 0 auto;overflow:hidden;display:grid;place-items:center;isolation:isolate}
+.brand-icon .brand-fallback-icon{display:block;width:82%;height:82%;max-width:44px;max-height:44px;transform:none;flex:none}
+.brand-icon .brand-cos-asset{position:absolute;inset:0;width:100%;height:100%;display:none;object-fit:contain;object-position:center;transform:none;max-width:none;max-height:none;border:0}
+html[data-brand="cos"] .brand-icon{background:transparent!important;box-shadow:none!important;border-radius:0!important;width:55px;height:55px;min-width:55px;padding:0;transform:none!important}
+html[data-brand="cos"] .brand-icon .brand-fallback-icon{color:#19d4e3;transform:none!important}
+html[data-brand="cos"] .brand-icon .brand-cos-asset.asset-ready{display:block}
+html[data-brand="cos"] .brand-text{min-width:0}
+html[data-brand="cos"] .brand-text strong{font-size:clamp(21px,2.6vw,30px);line-height:1.04;overflow-wrap:normal;white-space:nowrap}
+html[data-brand="cos"] .brand-text small{font-size:clamp(7px,.75vw,9px);letter-spacing:clamp(.9px,.14vw,2px);white-space:nowrap}
+html[data-brand="cos"] .site-header .brand{min-width:0;flex:0 1 auto;max-width:100%}
+html[data-brand="cos"] .hero{
+ background:linear-gradient(90deg,#06243a 0%,rgba(6,36,58,.98) 27%,rgba(6,36,58,.85) 55%,rgba(6,36,58,.35) 100%),url('https://cosvolleyball.github.io/court-hero.webp') right center / cover no-repeat,#06243a;
+}
+html[data-brand="cos"] .hero:before{display:none}
+html[data-brand="cos"] .hero-symbol{display:none}
+html[data-brand="cos"] .hero-copy{max-width:800px;width:100%}
+html[data-brand="cos"] .hero h1{color:#ffffff;text-shadow:0 2px 6px #031a2ba8}
+html[data-brand="cos"] .hero p{color:#f0f8fb;text-shadow:0 1px 3px #031a2b94}
+html[data-brand="cos"][data-theme="dark"] .hero{
+ background:linear-gradient(90deg,#041b2b 0%,rgba(4,27,43,.97) 29%,rgba(4,27,43,.76) 58%,rgba(4,27,43,.38) 100%),url('https://cosvolleyball.github.io/court-hero.webp') right center / cover no-repeat,#041b2b;
+}
+@media(max-width:650px){
+ html[data-brand="cos"] .site-header .brand{gap:7px}
+ html[data-brand="cos"] .brand-icon{width:43px;height:43px;min-width:43px}
+ html[data-brand="cos"] .brand-text strong{font-size:23px}
+ html[data-brand="cos"] .brand-text small{font-size:7px;letter-spacing:.8px}
+ html[data-brand="cos"] .hero{background-position:center,right center;background-size:cover,auto 100%}
+}
+@media(max-width:400px){html[data-brand="cos"] .brand-text strong{font-size:21px}html[data-brand="cos"] .brand-text small{letter-spacing:.45px}}

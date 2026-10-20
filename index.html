@@ -7,8 +7,12 @@
   <script>try{const p=localStorage.getItem("rallyrank-theme");document.documentElement.dataset.theme=p==="light"||p==="dark"?p:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");}catch(e){document.documentElement.dataset.theme="light"}</script>
   <meta name="description" content="Two-court volleyball scores and team rotations; admin-only player management and rankings." />
   <title>RallyRank — Volleyball Matchmaker</title>
-  <link rel="stylesheet" href="./styles.css?v=1.17" />
-  <link rel="stylesheet" href="./cos-theme.css?v=1.17" />
+  <!-- Shared COS Pickup Volleyball event artwork. Browser icon and home-screen mark -->
+  <link rel="icon" type="image/svg+xml" href="https://cosvolleyball.github.io/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="https://cosvolleyball.github.io/favicon-32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="https://cosvolleyball.github.io/apple-touch-icon.png" />
+  <link rel="stylesheet" href="./styles.css?v=1.18" />
+  <link rel="stylesheet" href="./cos-theme.css?v=1.18" />
 </head>
 <body>
   <div class="page-shell">
@@ -16,7 +20,13 @@
     <header class="site-header">
       <a class="brand" href="#courts" aria-label="RallyRank home">
         <span class="brand-icon" aria-hidden="true">
-          <svg viewBox="0 0 60 60" fill="none"><circle cx="30" cy="30" r="23" stroke="currentColor" stroke-width="3.4"/><path d="M14 17c12 2 21 12 19 26M26 7c4 14 0 25-15 32M50 17C35 20 27 34 29 53M49 37C36 28 20 31 10 44" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+          <!-- Stable inline fallback for offline use / the original RallyRank theme. -->
+          <svg class="brand-fallback-icon" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="30" cy="30" r="24" stroke="currentColor" stroke-width="3" />
+            <path d="M9 24c10-2 25 3 31 23M18 11c12 8 17 22 9 42M43 11c-10 8-16 18-15 35M51 33c-11-6-25-3-37 8" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" />
+          </svg>
+          <!-- Exact mark served by the other website for the same event. -->
+          <img class="brand-cos-asset" src="https://cosvolleyball.github.io/favicon-192.png" alt="" width="52" height="52" loading="eager" decoding="async" referrerpolicy="no-referrer" onload="this.classList.add('asset-ready')" onerror="this.classList.remove('asset-ready')" />
         </span>
         <span class="brand-text"><strong>RALLY<span>RANK</span></strong><small>VOLLEYBALL MATCHDAY</small></span>
       </a>
@@ -76,11 +86,11 @@
         <div id="admin-body"></div>
       </section>
     </main>
-    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> MADE FOR THE COURT</span><span>V1.17</span></footer>
+    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> MADE FOR THE COURT</span><span>V1.18</span></footer>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./config.js?v=1.17"></script>
-  <script src="./matchmaking.js?v=1.17"></script>
-  <script src="./app.js?v=1.17" defer></script>
+  <script src="./config.js?v=1.18"></script>
+  <script src="./matchmaking.js?v=1.18"></script>
+  <script src="./app.js?v=1.18" defer></script>
 </body>
 </html>
