@@ -864,3 +864,18 @@ html[data-theme="dark"] #view-courts .court-undo-2{background:#532838;border-col
 html[data-theme="dark"] #view-courts .court-undo-2 p,html[data-theme="dark"] #view-courts .court-undo-2 small{color:#ffd0dc}
 #view-courts #court-1-corrections,#view-courts #court-2-corrections{scroll-margin-top:24px}
 @media(max-width:650px){#view-courts .court-undo-panel{flex-direction:column;align-items:stretch;margin:12px 10px 5px;padding:13px 12px}#view-courts .court-undo-panel .btn{width:100%;min-height:46px}}
+
+
+/* V1.27: independent blue/red Undo + Redo controls, clearly separated. */
+#view-courts .court-undo-panel{display:block}
+#view-courts .court-undo-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:10px}
+#view-courts .court-undo-item{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:11px;border:1px solid currentColor;border-radius:9px;background:rgba(255,255,255,.09)}
+#view-courts .court-undo-item p{flex:1;overflow-wrap:anywhere}
+#view-courts .court-undo-item .btn{width:100%;margin-top:6px}
+#view-courts .court-redo-item{border-style:dashed}
+#view-courts .court-undo-1 .court-redo-item .btn{background:#e6f3ff;border:2px solid #155cb3;color:#134577}
+#view-courts .court-undo-2 .court-redo-item .btn{background:#fff1f5;border:2px solid #ac2949;color:#86223c}
+html[data-theme="dark"] #view-courts .court-undo-1 .court-redo-item .btn{background:#285b8c;color:#fff;border-color:#8bcaff}
+html[data-theme="dark"] #view-courts .court-undo-2 .court-redo-item .btn{background:#7a324a;color:#fff;border-color:#ffa5ba}
+#view-courts .match-recovery .btn-secondary{font-weight:900}
+@media(max-width:700px){#view-courts .court-undo-actions{grid-template-columns:1fr}#view-courts .court-undo-item .btn{min-height:46px}}
