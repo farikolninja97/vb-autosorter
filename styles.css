@@ -845,3 +845,22 @@ html[data-theme="dark"] #view-courts .score-correction-panel p,html[data-theme="
  #view-courts .score-correction-panel .btn{width:100%;min-height:46px}
  #view-courts .court-roster-1,#view-courts .court-roster-2,#view-courts .court-schedule-1,#view-courts .court-schedule-2{border-width:3px!important}
 }
+
+/* V1.26: independent, unmistakable admin-only undo controls inside each court. */
+#view-courts .court-undo-panel{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:14px 16px 6px;padding:13px 15px;border:2px solid;border-radius:11px;min-width:0}
+#view-courts .court-undo-panel strong{font-size:14px;font-weight:900;line-height:1.35}
+#view-courts .court-undo-panel p{margin:4px 0;font-size:12px;line-height:1.4}
+#view-courts .court-undo-panel small{display:block;max-width:62ch;line-height:1.4;font-size:11px}
+#view-courts .court-undo-panel .btn{flex:none;font-size:12px;font-weight:900;min-height:43px}
+#view-courts .court-undo-1{background:#d9ebff;border-color:#3c84d4;color:#153f76}
+#view-courts .court-undo-1 p,#view-courts .court-undo-1 small{color:#245080}
+#view-courts .court-undo-1 .btn{background:#155cb3;border-color:#104987;color:#fff}
+#view-courts .court-undo-2{background:#ffe4e8;border-color:#d85068;color:#85233a}
+#view-courts .court-undo-2 p,#view-courts .court-undo-2 small{color:#833247}
+#view-courts .court-undo-2 .btn{background:#b5203c;border-color:#8e1832;color:#fff}
+html[data-theme="dark"] #view-courts .court-undo-1{background:#183455;border-color:#4889d4;color:#e7f3ff}
+html[data-theme="dark"] #view-courts .court-undo-1 p,html[data-theme="dark"] #view-courts .court-undo-1 small{color:#c5e1ff}
+html[data-theme="dark"] #view-courts .court-undo-2{background:#532838;border-color:#e56882;color:#ffebf0}
+html[data-theme="dark"] #view-courts .court-undo-2 p,html[data-theme="dark"] #view-courts .court-undo-2 small{color:#ffd0dc}
+#view-courts #court-1-corrections,#view-courts #court-2-corrections{scroll-margin-top:24px}
+@media(max-width:650px){#view-courts .court-undo-panel{flex-direction:column;align-items:stretch;margin:12px 10px 5px;padding:13px 12px}#view-courts .court-undo-panel .btn{width:100%;min-height:46px}}
