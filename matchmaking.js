@@ -1,4 +1,4 @@
-/* RallyRank V1.15 — private gender-aware optional team distribution + skill balance. */
+/* RallyRank V1.22 — MMR-first balance, optional gender and primary/secondary position distribution. */
 (function(root){
   'use strict';
   const TEAM_COUNT=6;
@@ -33,7 +33,38 @@
   // The first three teams play on Court 1; the last three play on Court 2.
   // In mixed mode, every court receives advanced players where possible.
   // In split mode, the stronger half goes to Court 1, weaker half to Court 2.
-  function score(teams,priorPairs,teamSize,mode,balanceWomen=false){
+  // Primary positions count fully, secondary roles partially, allowing a
+  // player to cover shortages without being counted as two full specialists.
+  // Keep these categories advisory, not strict rotation requirements.
+  function positionCoverage(player, role){
+    if(isPlaceholder(player))return 0;
+    const primary=player.position||player.primary_position||'Unspecified';
+    const secondary=player.secondary_position||'Unspecified';
+    function affinity(position){
+      if(role==='setter')return position==='Setter'?1:position==='Utility'?.35:0;
+      if(role==='middle')return position==='Middle Blocker'?1:position==='Utility'?.35:0;
+      if(role==='outside')return position==='Outside Hitter'?1:position==='Opposite'?.8:position==='Utility'?.4:0;
+      if(role==='defense')return ['Libero','Defensive Specialist'].includes(position)?1:position==='Utility'?.4:0;
+      return 0;
+    }
+    return Math.max(affinity(primary),affinity(secondary)*.62);
+  }
+  function positionBalanceCost(teams,mode,teamSize){
+    const blocks=mode==='split'?[[0,1,2],[3,4,5]]:[[0,1,2,3,4,5]];
+    // Squared differences softly reward distributing scarce specialties,
+    // while the main MMR variance score stays the dominant objective.
+    const weight=9000*(teamSize/6);
+    let cost=0;
+    for(const block of blocks){
+      for(const [role,emphasis] of [['setter',1.5],['middle',1.05],['outside',1.15],['defense',.9]]){
+        const amounts=block.map(i=>teams[i].reduce((sum,p)=>sum+positionCoverage(p,role),0));
+        const average=amounts.reduce((sum,n)=>sum+n,0)/amounts.length;
+        cost+=weight*emphasis*amounts.reduce((sum,n)=>sum+(n-average)**2,0);
+      }
+    }
+    return cost;
+  }
+  function score(teams,priorPairs,teamSize,mode,balanceWomen=false,balancePositions=false){
     const avgs=teams.map(teamAverage);
     const blocks=mode==='split'?[[0,1,2],[3,4,5]]:[[0,1,2,3,4,5]];
     let ratingCost=0;
@@ -76,12 +107,14 @@
         ratingCost+=(c1-c2)**2*24000;
       }
     }
+    if(balancePositions)ratingCost+=positionBalanceCost(teams,mode,teamSize);
     return ratingCost+repeats*1800;
   }
   function makeTeams(players,teamSize,previousTeams=[],mode='mixed',options={}){
     if(!Number.isInteger(teamSize)||teamSize<2||teamSize>6)throw Error('Team size must be 2–6.');
     if(!['mixed','split'].includes(mode))throw Error('Unknown court balancing mode.');
     const balanceWomen=options?.balanceWomen===true;
+    const balancePositions=options?.balancePositions===true;
     const capacity=TEAM_COUNT*teamSize;
     if(players.length<TEAM_COUNT)throw Error('At least six real players are needed (one per team).');
     const selected=players.slice(0,capacity);
@@ -131,7 +164,7 @@
         // Alternate between courts first to distribute advanced players.
         assign(sorted,[0,3,1,4,2,5]);
       }
-      let current=score(teams,priorPairs,teamSize,mode,balanceWomen);
+      let current=score(teams,priorPairs,teamSize,mode,balanceWomen,balancePositions);
       for(let n=0;n<450;n++){
         const a=Math.floor(Math.random()*TEAM_COUNT),b=Math.floor(Math.random()*TEAM_COUNT);
         if(a===b||(mode==='split'&&Math.floor(a/3)!==Math.floor(b/3)))continue;
@@ -139,15 +172,63 @@
         const bReal=teams[b].map((p,i)=>!isPlaceholder(p)?i:-1).filter(i=>i>=0);
         const ia=aReal[Math.floor(Math.random()*aReal.length)],ib=bReal[Math.floor(Math.random()*bReal.length)];
         [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
-        const next=score(teams,priorPairs,teamSize,mode,balanceWomen);
+        const next=score(teams,priorPairs,teamSize,mode,balanceWomen,balancePositions);
         if(next<current){current=next;}
         else [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
       }
       if(current<bestScore){bestScore=current;best=teams.map(t=>[...t]);}
     }
-    return best;
+    return balancePositions?best.map(assignTeamPositions):best;
   }
-  const api={makeTeams,swing,marginBonus,matchSwing,spread,teamAverage,isPlaceholder,K_FACTOR};
+  // Assign an actual on-court role AFTER the teams have been balanced. These
+  // round-specific roles never overwrite primary/secondary profile preferences.
+  // For 6v6 prefer a conventional role mix; a libero/DS replaces a slot where
+  // the roster calls for one. This is guidance, not a fixed rotation system.
+  function assignTeamPositions(team){
+    if(!Array.isArray(team)||team.length<2||team.length>6)throw Error('A team must have 2–6 spots.');
+    const base=['Setter','Outside Hitter','Outside Hitter','Middle Blocker','Middle Blocker','Opposite'];
+    const roles=base.slice(0,team.length);
+    const defenders=team.filter(p=>!isPlaceholder(p)).map(p=>[p.position||p.primary_position,p.secondary_position])
+      .flat().filter(x=>x==='Libero'||x==='Defensive Specialist');
+    if(defenders.length&&team.length>=4){
+      const preferred=defenders.includes('Libero')?'Libero':'Defensive Specialist';
+      const idx=roles.lastIndexOf('Middle Blocker');
+      if(idx>=0)roles[idx]=preferred;
+      if(team.filter(p=>!isPlaceholder(p)&&[p.position||p.primary_position,p.secondary_position].some(x=>x==='Libero'||x==='Defensive Specialist')).length>1&&team.length===6){
+        const idx2=roles.indexOf('Opposite');
+        if(idx2>=0)roles[idx2]=preferred==='Libero'?'Defensive Specialist':'Libero';
+      }
+    }
+    function fit(player,role){
+      if(isPlaceholder(player))return 0;
+      const primary=player.position||player.primary_position||'Unspecified';
+      const secondary=player.secondary_position||'Unspecified';
+      const affinity=p=>{
+        if(p===role)return 100;
+        if((p==='Outside Hitter'&&role==='Opposite')||(p==='Opposite'&&role==='Outside Hitter'))return 48;
+        if(['Libero','Defensive Specialist'].includes(p)&&['Libero','Defensive Specialist'].includes(role))return 65;
+        if(p==='Utility')return 25;
+        if(p==='Unspecified')return 4;
+        return -18;
+      };
+      return Math.max(affinity(primary),.65*affinity(secondary));
+    }
+    // 6! <= 720 options: tiny exact optimization, stable when affinities tie.
+    const used=Array(roles.length).fill(false);
+    let bestScore=-Infinity,bestSlots=[];
+    function dfs(i,value,slots){
+      if(i===team.length){if(value>bestScore){bestScore=value;bestSlots=[...slots];}return;}
+      for(let j=0;j<roles.length;j++){
+        if(used[j])continue;
+        used[j]=true;slots.push(j);
+        dfs(i+1,value+fit(team[i],roles[j]),slots);
+        slots.pop();used[j]=false;
+      }
+    }
+    dfs(0,0,[]);
+    return team.map((p,i)=>({...p,assigned_position:roles[bestSlots[i]]}));
+  }
+  const api={makeTeams,swing,marginBonus,matchSwing,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,K_FACTOR};
   root.RallyMath=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

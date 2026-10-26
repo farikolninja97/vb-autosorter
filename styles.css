@@ -762,3 +762,20 @@ html[data-theme="dark"] .court-roster .team-average-mmr small{color:#b9d0ed}
 [data-theme="dark"] .who-no-results{background:#1b3047;color:#b3c6dc;border-color:#3b536c}
 @media(max-width:880px){.who-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:570px){.who-panel{padding:15px}.who-grid{grid-template-columns:1fr;max-height:none}.who-overview h3{font-size:21px}.who-attendance-count{min-width:92px}.who-attendance-count strong{font-size:25px}.who-person{padding:12px}}
+
+/* V1.21: keep primary/secondary player positions legible in both themes. */
+.profile-selects {align-items: end;}
+.position-balance-panel {margin-top:12px;}
+.position-balance-panel .gender-balance-check {max-width:100%;}
+
+/* Position preferences shown only after approved admin sign-in. */
+.court-roster .team-preference{display:block;margin-top:3px;color:#546f8f;font-size:10px;font-weight:650;line-height:1.35;}
+html[data-theme="dark"] .court-roster .team-preference{color:#b9c9dd;}
+@media(max-width:650px){.court-roster .team-preference{font-size:10px;}}
+
+/* V1.22: actual round-specific volleyball role, clear in both color modes. */
+.court-roster .team-assigned-position{display:block;width:fit-content;max-width:100%;margin-top:4px;padding:3px 6px;border-radius:5px;background:rgba(8,121,136,.12);border:1px solid rgba(8,121,136,.26);color:#086c77;font-size:10px;font-weight:800;line-height:1.3;letter-spacing:.06px;overflow-wrap:anywhere;}
+html[data-theme="dark"] .court-roster .team-assigned-position{background:rgba(53,221,223,.12);border-color:rgba(53,221,223,.36);color:#85e8ea;}
+.court-roster .team-members .sub-member small .team-assigned-position{color:#086c77;text-align:left;}
+html[data-theme="dark"] .court-roster .team-members .sub-member small .team-assigned-position{color:#85e8ea;}
+@media(max-width:650px){.court-roster .team-assigned-position{font-size:11px;padding:4px 7px;}}
