@@ -779,3 +779,9 @@ html[data-theme="dark"] .court-roster .team-assigned-position{background:rgba(53
 .court-roster .team-members .sub-member small .team-assigned-position{color:#086c77;text-align:left;}
 html[data-theme="dark"] .court-roster .team-members .sub-member small .team-assigned-position{color:#85e8ea;}
 @media(max-width:650px){.court-roster .team-assigned-position{font-size:11px;padding:4px 7px;}}
+
+/* V1.24: Optional custom initial MMR and court preference visibility */
+.custom-mmr-group{padding:13px;border:1px solid var(--line,#50647d);border-radius:11px;background:var(--surface-subtle,rgba(125,160,200,.07));}
+.custom-mmr-group[hidden]{display:none!important;}
+.custom-mmr-group .subtle{margin:7px 0 0;}
+.visibility-panel{margin-top:12px;}
