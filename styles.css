@@ -879,3 +879,15 @@ html[data-theme="dark"] #view-courts .court-undo-1 .court-redo-item .btn{backgro
 html[data-theme="dark"] #view-courts .court-undo-2 .court-redo-item .btn{background:#7a324a;color:#fff;border-color:#ffa5ba}
 #view-courts .match-recovery .btn-secondary{font-weight:900}
 @media(max-width:700px){#view-courts .court-undo-actions{grid-template-columns:1fr}#view-courts .court-undo-item .btn{min-height:46px}}
+
+/* V1.28 – one always-visible Undo/Redo pair per court; disabled actions are clear. */
+#view-courts .court-fix-title{font-size:14px;font-weight:900;letter-spacing:.02em;margin-bottom:10px}
+#view-courts .court-undo-actions{margin-bottom:10px}
+#view-courts .court-undo-item{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between}
+#view-courts .court-undo-item .court-fix-state{font-size:12px;line-height:1.45;min-height:2.8em;overflow-wrap:anywhere;font-weight:600}
+#view-courts .court-undo-panel .court-fix-button{width:100%;min-height:45px;white-space:normal}
+#view-courts .court-undo-panel .court-fix-button:disabled{opacity:.48!important;cursor:not-allowed!important;filter:grayscale(.35);box-shadow:none!important}
+#view-courts .court-undo-1 .court-fix-state{color:#153f76}
+#view-courts .court-undo-2 .court-fix-state{color:#85233a}
+html[data-theme="dark"] #view-courts .court-undo-1 .court-fix-state{color:#d3eaff}
+html[data-theme="dark"] #view-courts .court-undo-2 .court-fix-state{color:#ffe0e7}
