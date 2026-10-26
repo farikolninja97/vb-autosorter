@@ -1,4 +1,4 @@
-/* RallyRank V1.22 — MMR-first balance, optional gender and primary/secondary position distribution. */
+/* RallyRank V1.23 — MMR-first balance, optional gender and primary/secondary position distribution. */
 (function(root){
   'use strict';
   const TEAM_COUNT=6;
@@ -36,15 +36,19 @@
   // Primary positions count fully, secondary roles partially, allowing a
   // player to cover shortages without being counted as two full specialists.
   // Keep these categories advisory, not strict rotation requirements.
+  // Flex is a wildcard whether saved as a primary or secondary preference.
+  // A secondary Flex never replaces an exact primary preference: it provides
+  // fallback coverage for *every* role if that team is short on specialists.
   function positionCoverage(player, role){
     if(isPlaceholder(player))return 0;
     const primary=player.position||player.primary_position||'Unspecified';
     const secondary=player.secondary_position||'Unspecified';
     function affinity(position){
-      if(role==='setter')return position==='Setter'?1:position==='Utility'?.35:0;
-      if(role==='middle')return position==='Middle Blocker'?1:position==='Utility'?.35:0;
-      if(role==='outside')return position==='Outside Hitter'?1:position==='Opposite'?.8:position==='Utility'?.4:0;
-      if(role==='defense')return ['Libero','Defensive Specialist'].includes(position)?1:position==='Utility'?.4:0;
+      if(position==='Flex')return .60;
+      if(role==='setter')return position==='Setter'?1:0;
+      if(role==='middle')return position==='Middle Blocker'?1:0;
+      if(role==='outside')return position==='Outside Hitter'?1:position==='Opposite'?.8:0;
+      if(role==='defense')return position==='Libero'?1:0;
       return 0;
     }
     return Math.max(affinity(primary),affinity(secondary)*.62);
@@ -180,40 +184,34 @@
     }
     return balancePositions?best.map(assignTeamPositions):best;
   }
-  // Assign an actual on-court role AFTER the teams have been balanced. These
-  // round-specific roles never overwrite primary/secondary profile preferences.
-  // For 6v6 prefer a conventional role mix; a libero/DS replaces a slot where
-  // the roster calls for one. This is guidance, not a fixed rotation system.
+  // Assign specific court roles AFTER balancing team ratings. Flex is never
+  // displayed as an assignment: it means the player can cover any real role.
   function assignTeamPositions(team){
     if(!Array.isArray(team)||team.length<2||team.length>6)throw Error('A team must have 2–6 spots.');
-    const base=['Setter','Outside Hitter','Outside Hitter','Middle Blocker','Middle Blocker','Opposite'];
-    const roles=base.slice(0,team.length);
-    const defenders=team.filter(p=>!isPlaceholder(p)).map(p=>[p.position||p.primary_position,p.secondary_position])
-      .flat().filter(x=>x==='Libero'||x==='Defensive Specialist');
-    if(defenders.length&&team.length>=4){
-      const preferred=defenders.includes('Libero')?'Libero':'Defensive Specialist';
+    const roles=['Setter','Outside Hitter','Outside Hitter','Middle Blocker','Middle Blocker','Opposite'].slice(0,team.length);
+    const liberoCandidates=team.filter(p=>!isPlaceholder(p)&&[p.position||p.primary_position,p.secondary_position].includes('Libero'));
+    if(liberoCandidates.length&&team.length>=4){
+      // Include a Libero only if someone actually prefers it. Flex can cover
+      // that slot if necessary, but won't cause a Libero slot by itself.
       const idx=roles.lastIndexOf('Middle Blocker');
-      if(idx>=0)roles[idx]=preferred;
-      if(team.filter(p=>!isPlaceholder(p)&&[p.position||p.primary_position,p.secondary_position].some(x=>x==='Libero'||x==='Defensive Specialist')).length>1&&team.length===6){
-        const idx2=roles.indexOf('Opposite');
-        if(idx2>=0)roles[idx2]=preferred==='Libero'?'Defensive Specialist':'Libero';
-      }
+      if(idx>=0)roles[idx]='Libero';
     }
     function fit(player,role){
       if(isPlaceholder(player))return 0;
       const primary=player.position||player.primary_position||'Unspecified';
       const secondary=player.secondary_position||'Unspecified';
-      const affinity=p=>{
-        if(p===role)return 100;
-        if((p==='Outside Hitter'&&role==='Opposite')||(p==='Opposite'&&role==='Outside Hitter'))return 48;
-        if(['Libero','Defensive Specialist'].includes(p)&&['Libero','Defensive Specialist'].includes(role))return 65;
-        if(p==='Utility')return 25;
-        if(p==='Unspecified')return 4;
+      function affinity(position){
+        if(position===role)return 100;
+        if(position==='Flex')return 70; // May play ANY role; below exact primary.
+        if((position==='Outside Hitter'&&role==='Opposite')||(position==='Opposite'&&role==='Outside Hitter'))return 48;
+        if(position==='Unspecified')return 4;
         return -18;
-      };
+      }
+      // Exact secondary preference is worth 65. Secondary Flex 45.5 for any
+      // role, enough to fill shortages but never override exact primary (100).
       return Math.max(affinity(primary),.65*affinity(secondary));
     }
-    // 6! <= 720 options: tiny exact optimization, stable when affinities tie.
+    // 6! <= 720 arrangements; choose the best fit without changing teams.
     const used=Array(roles.length).fill(false);
     let bestScore=-Infinity,bestSlots=[];
     function dfs(i,value,slots){
