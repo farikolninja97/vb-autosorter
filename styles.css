@@ -785,3 +785,63 @@ html[data-theme="dark"] .court-roster .team-members .sub-member small .team-assi
 .custom-mmr-group[hidden]{display:none!important;}
 .custom-mmr-group .subtle{margin:7px 0 0;}
 .visibility-panel{margin-top:12px;}
+
+/* V1.25: court identity and score correction stay on Live Courts. */
+#view-courts .court-quick-nav{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 18px;padding:10px;background:var(--surface-subtle,rgba(120,148,184,.08));border:1px solid var(--border,#ced9e7);border-radius:12px}
+#view-courts .court-quick-nav button{font:800 12px 'DM Sans',system-ui,sans-serif;color:var(--text,#153455);background:var(--panel,#fff);border:1px solid var(--border,#c5d2e2);border-radius:8px;padding:10px 12px;min-height:42px;cursor:pointer}
+#view-courts .court-quick-nav button:focus-visible{outline:3px solid #41a8db;outline-offset:2px}
+#view-courts .court-quick-nav .nav-court-blue{border-color:#5b98d9;color:#1451a0;background:#eaf3ff}
+#view-courts .court-quick-nav .nav-court-red{border-color:#db8794;color:#a21c32;background:#fff0f2}
+#view-courts .court-roster-1,#view-courts .court-schedule-1{background:#eaf3ff!important;border:3px solid #1764b7!important;box-shadow:0 7px 20px #17498217}
+#view-courts .court-roster-2,#view-courts .court-schedule-2{background:#fff0f2!important;border:3px solid #c83750!important;box-shadow:0 7px 20px #7c1c3817}
+#view-courts .court-roster-1 .court-header,#view-courts .court-schedule-1 .court-schedule-head{background:linear-gradient(120deg,#11417f,#1d68b8)!important;border-color:#0b356a!important;color:#fff}
+#view-courts .court-roster-2 .court-header,#view-courts .court-schedule-2 .court-schedule-head{background:linear-gradient(120deg,#821729,#bd3148)!important;border-color:#711222!important;color:#fff}
+#view-courts .court-roster-1 .team{background:#fff;border-color:#b3d3f8}
+#view-courts .court-roster-2 .team{background:#fff;border-color:#f1bec8}
+#view-courts .court-roster-1 .team-title{color:#1155a2}
+#view-courts .court-roster-2 .team-title{color:#b21d35}
+#view-courts .court-roster-1 .team-members li,#view-courts .court-roster-2 .team-members li{color:#17314f}
+#view-courts .court-schedule-1 .match{background:#fff;border-color:#b3d3f8;border-left:5px solid #1764b7}
+#view-courts .court-schedule-2 .match{background:#fff;border-color:#f1bec8;border-left:5px solid #c83750}
+#view-courts .court-schedule-1 .match-head,#view-courts .court-schedule-1 .match-side{color:#1b4178}
+#view-courts .court-schedule-2 .match-head,#view-courts .court-schedule-2 .match-side{color:#792337}
+#view-courts .court-header h3,#view-courts .court-header p,#view-courts .court-schedule-head h3,#view-courts .court-schedule-head span{color:#fff!important}
+#view-courts .court-color-label{display:inline-block;color:#fff;background:#ffffff27;border:1px solid #ffffff55;border-radius:5px;padding:4px 7px;font-size:10px;font-weight:900;letter-spacing:1.2px;margin-bottom:6px}
+#view-courts .court-roster-1 .court-header .pill,#view-courts .court-roster-2 .court-header .pill{color:#fff;background:#ffffff29;border:1px solid #ffffff79}
+#view-courts .court-roster-1 .team-assigned-position{color:#1955a0;border-color:#a0c7f1;background:#e5f1ff}
+#view-courts .court-roster-2 .team-assigned-position{color:#952b43;border-color:#efb1be;background:#fff1f3}
+#view-courts .match-recovery{margin-top:12px;padding-top:11px;border-top:1px solid #bbcce0;display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap}
+#view-courts .match-recovery>span{font-size:11px;font-weight:800;color:#43617a}
+#view-courts .match-undo-note{margin:10px 0 0;font-size:11px;color:#63768c;line-height:1.45}
+#view-courts .score-correction-panel{margin:12px 0 17px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:17px;border:2px solid #d6a14d;border-radius:12px;background:#fff7e8;color:#51390e}
+#view-courts .score-correction-panel strong{font-size:16px;font-weight:900}
+#view-courts .score-correction-panel p{font-size:13px;line-height:1.5;margin:5px 0;color:#5e4518}
+#view-courts .score-correction-panel small{display:block;line-height:1.5;color:#705622}
+#view-courts .score-correction-panel .btn{flex:0 0 auto;color:#fff;background:#a02937;border-color:#862233}
+#view-courts #court-team-rosters,#view-courts #court-1-matches,#view-courts #court-2-matches,#view-courts #score-corrections,#view-courts #live-private-results,#view-courts #court-admin-session{scroll-margin-top:22px}
+html[data-theme="dark"] #view-courts .court-quick-nav{background:#122139;border-color:#364e69}
+html[data-theme="dark"] #view-courts .court-quick-nav button{background:#20324b;color:#eff5ff;border-color:#456281}
+html[data-theme="dark"] #view-courts .court-quick-nav .nav-court-blue{background:#172d4c;border-color:#3f7fd0;color:#a7d0ff}
+html[data-theme="dark"] #view-courts .court-quick-nav .nav-court-red{background:#462336;border-color:#b94a63;color:#ffd1d8}
+html[data-theme="dark"] #view-courts .court-roster-1,html[data-theme="dark"] #view-courts .court-schedule-1{background:#102742!important;border-color:#3a84d3!important}
+html[data-theme="dark"] #view-courts .court-roster-2,html[data-theme="dark"] #view-courts .court-schedule-2{background:#3b1c2c!important;border-color:#e05f75!important}
+html[data-theme="dark"] #view-courts .court-roster-1 .team{background:#172d4b;border-color:#3b608b}
+html[data-theme="dark"] #view-courts .court-roster-2 .team{background:#492839;border-color:#8b485b}
+html[data-theme="dark"] #view-courts .court-roster-1 .team-title{color:#a0d1ff}
+html[data-theme="dark"] #view-courts .court-roster-2 .team-title{color:#ffc0cd}
+html[data-theme="dark"] #view-courts .court-roster-1 .team-members li,html[data-theme="dark"] #view-courts .court-roster-2 .team-members li{color:#ecf3ff}
+html[data-theme="dark"] #view-courts .court-schedule-1 .match{background:#182e4d;border-color:#3b608b;border-left-color:#65a8ec}
+html[data-theme="dark"] #view-courts .court-schedule-2 .match{background:#492637;border-color:#8b485b;border-left-color:#f07a92}
+html[data-theme="dark"] #view-courts .court-schedule-1 .match-head,html[data-theme="dark"] #view-courts .court-schedule-1 .match-side,html[data-theme="dark"] #view-courts .court-schedule-2 .match-head,html[data-theme="dark"] #view-courts .court-schedule-2 .match-side{color:#f0f6ff}
+html[data-theme="dark"] #view-courts .court-roster-1 .team-assigned-position{color:#b3dbff;border-color:#4e83b3;background:#1f3e5d}
+html[data-theme="dark"] #view-courts .court-roster-2 .team-assigned-position{color:#ffcfda;border-color:#a75a70;background:#532d42}
+html[data-theme="dark"] #view-courts .match-recovery>span,html[data-theme="dark"] #view-courts .match-undo-note{color:#b5c9df}
+html[data-theme="dark"] #view-courts .score-correction-panel{background:#3c2b19;border-color:#b48b42;color:#fff0d8}
+html[data-theme="dark"] #view-courts .score-correction-panel p,html[data-theme="dark"] #view-courts .score-correction-panel small{color:#f0dfc4}
+@media(max-width:650px){
+ #view-courts .court-quick-nav{padding:8px;gap:6px}
+ #view-courts .court-quick-nav button{flex:1 1 calc(50% - 6px);font-size:11px;padding:10px 7px}
+ #view-courts .score-correction-panel{flex-direction:column;align-items:stretch}
+ #view-courts .score-correction-panel .btn{width:100%;min-height:46px}
+ #view-courts .court-roster-1,#view-courts .court-roster-2,#view-courts .court-schedule-1,#view-courts .court-schedule-2{border-width:3px!important}
+}

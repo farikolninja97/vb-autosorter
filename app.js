@@ -64,7 +64,7 @@
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.24';
+  const APP_VERSION='1.25';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   let demoData=null, modeEpoch=0;
@@ -464,6 +464,19 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const a=avg(ta),b=avg(tb);if(a===null||b===null)return null;
     return sa>sb?window.RallyMath.matchSwing(a,b,sa,sb):window.RallyMath.matchSwing(b,a,sa,sb);
   }
+  // The database undo RPC always reverses the latest result ACROSS BOTH courts.
+  // Never present an older match as individually undoable.
+  function latestCompletedMatch(){
+    return [...(pub?.matches||[])].filter(m=>m.winner_team_id && Number.isInteger(Number(m.completed_seq)) && Number(m.completed_seq)>0)
+      .sort((a,b)=>Number(b.completed_seq)-Number(a.completed_seq))[0]||null;
+  }
+  function scoreCorrectionPanel(){
+    if(!adminGranted || pub?.event?.status!=='locked')return '';
+    const recent=latestCompletedMatch();
+    if(!recent)return `<div class="score-correction-panel" id="score-corrections"><div><strong>↶ Score corrections</strong><p>No scores have been saved yet. Enter a final score on its court card.</p></div></div>`;
+    const left=teamName(teamById(recent.team_a_id)),right=teamName(teamById(recent.team_b_id));
+    return `<div class="score-correction-panel" id="score-corrections" aria-label="Admin score correction"><div><strong>↶ Correct the latest result</strong><p><b>Court ${recent.court} · Match ${recent.order}:</b> ${safe(left)} ${recent.score_a}–${recent.score_b} ${safe(right)}. Undo restores each player's previous rating and win/loss record.</p><small>To fix an older match, undo newer results first, in reverse order. Nothing changes until you confirm.</small></div><button type="button" class="btn btn-danger" data-action="undo-score" data-match="${safe(recent.id)}">↶ Undo this score</button></div>`;
+  }
   function renderMatch(m,adminControls){
     const ta=teamById(m.team_a_id),tb=teamById(m.team_b_id);
     const done=Boolean(m.winner_team_id);
@@ -481,9 +494,14 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
         <button class="btn btn-primary btn-full" type="submit">✓ Save final score</button>
       </form>`;
     }
+    const latest=adminControls?latestCompletedMatch():null;
+    const undoHere=Boolean(done && latest?.id===m.id);
+    const undoControl=done&&adminControls?(undoHere
+      ?`<div class="match-recovery"><span>Latest saved result</span><button type="button" class="btn btn-danger btn-small" data-action="undo-score" data-match="${safe(m.id)}" aria-label="Undo Court ${m.court} Match ${m.order} result">↶ Undo this score</button></div>`
+      :`<p class="match-undo-note">To correct this result, undo newer recorded scores first.</p>`):'';
     return `<article class="match ${done?'match-done':ready?'match-ready':'match-waiting'}"><div class="match-head"><span>Match ${m.order}</span>${statusPill(stateLabel,done?'win':ready?'':'muted')}</div>
       <div class="match-line"><span class="match-side ${done&&m.winner_team_id===m.team_a_id?'winner':''}">${safe(leftLabel)}</span><span class="vs">${done&&m.score_a!==null?`${m.score_a} : ${m.score_b}`:'VS'}</span><span class="match-side right ${done&&m.winner_team_id===m.team_b_id?'winner':''}">${safe(rightLabel)}</span></div>
-      ${done?'':controls}</article>`;
+      ${done?undoControl:controls}</article>`;
   }
   // Team averages are derived ONLY from vmm_get_admin_state's protected player list.
   // Never attach numeric averages to public roster JSON or public DOM nodes.
@@ -513,7 +531,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   function renderCourts(){
     const e=pub.event;
     const canScore=Boolean(adminGranted&&e?.status==='locked');
-    const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">Both court rosters first, then the match schedule. Every team plays twice.</p></div><div class="live-courts-actions">${adminGranted?'<button class="btn btn-small btn-secondary" type="button" data-action="jump-ratings">🔒 Private results ↓</button>':''}<button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>`;
+    const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">Two clearly color-coded courts. Team lists first, then each court's match scores and corrections.</p></div><div class="live-courts-actions"><button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div><nav class="court-quick-nav" aria-label="Live Courts shortcuts"><button type="button" data-action="court-jump" data-target="court-team-rosters">🏐 Team rosters</button><button type="button" class="nav-court-blue" data-action="court-jump" data-target="court-1-matches">🔵 Court 1 scores</button><button type="button" class="nav-court-red" data-action="court-jump" data-target="court-2-matches">🔴 Court 2 scores</button>${adminGranted?`<button type="button" data-action="court-jump" data-target="score-corrections">↶ Undo scores</button><button type="button" data-action="court-jump" data-target="live-private-results">🔒 Match ratings</button><button type="button" data-action="court-jump" data-target="court-admin-session">⚙ Session settings</button>`:''}</nav>`;
     // Ratings belong ONLY to Live Courts, never to the Admin tab. Keep this block after scores.
     const privateTools=adminGranted?`<div class="courts-admin-section" id="court-admin-tools">${renderPrivateMatchRatings()}${renderSessionManagement()}</div>`:'';
     if(!e)return `${title}<div class="empty"><strong>No active session</strong><p>Once check-in opens, the court schedule will show here.</p></div>${privateTools}`;
@@ -523,14 +541,15 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const matches=pub.matches.filter(m=>m.court===court).sort((a,b)=>a.order-b.order);
       const gamesDone=matches.filter(m=>m.winner_team_id).length;
       const courtTitle=e.court_mode==='split'?(court===1?'Court 01 · Competitive':'Court 02 · Beginner-friendly'):`Court 0${court}`;
-      const header=`<div class="court-header"><div><h3>${courtTitle}</h3><p>${gamesDone}/3 matches completed</p></div>${statusPill(gamesDone===3?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===3?'win':'muted')}</div>`;
+      const header=`<div class="court-header"><div><span class="court-color-label">${court===1?'🔵 BLUE COURT':'🔴 RED COURT'}</span><h3>${courtTitle}</h3><p>${gamesDone}/3 matches completed</p></div>${statusPill(gamesDone===3?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===3?'win':'muted')}</div>`;
       const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}</div>${adminTeamAverage(t)}<ul class="team-members">${t.players.map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute${assignedRole(p)}</small></li>`:`<li><span class="team-member-name">${safe(p.name)}</span>${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
-      const schedule=`<section class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${courtTitle} · Match schedule</h3><span>${gamesDone} of 3 complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div></section>`;
+      const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of 3 complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div></section>`;
       return {roster,schedule};
     });
-    return `${title}<div class="court-roster-heading"><h3>Team assignments</h3><p>All six teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>
+    return `${title}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All six teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>
       <div class="court-matches-heading"><h3>Live matches & results</h3><p>${canScore?'Enter final scores directly below each match.':'Follow the match order and final scores.'}</p></div>
-      ${canScore?'<div class="courts-admin-notice">🔒 Admin scoring enabled · Enter final points and save the result.</div>':''}
+      ${canScore?'<div class="courts-admin-notice">🔒 Admin scoring enabled · Enter final points and save the result. Each finished match has a safe Undo option.</div>':''}
+      ${scoreCorrectionPanel()}
       <div class="courts-layout courts-matches-layout">${groups.map(g=>g.schedule).join('')}</div>
       <div class="hint" style="margin-top:15px">Every team plays two games. A temporary substitute can fill an open roster spot without receiving a rating.</div>${privateTools}`;
   }
@@ -602,7 +621,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   function renderSessionManagement(){
     if(!adminGranted)return '';
     const e=pub?.event;
-    if(!e)return `<section class="panel admin-section"><div class="panel-head"><h3>🔒 Session management</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Create a session to start player check-ins and generate teams.</p>${renderCreateForm()}</section>`;
+    if(!e)return `<section class="panel admin-section" id="court-admin-session"><div class="panel-head"><h3>🔒 Session management</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Create a session to start player check-ins and generate teams.</p>${renderCreateForm()}</section>`;
     const slots=Math.max(0,e.capacity-pub.roster.length);const canGenerate=pub.roster.length>=6;const results=pub.matches.filter(m=>m.winner_team_id).length;const roundComplete=results===6;
     const courtMode=e.court_mode==='split'?'split':'mixed';
     const modeSelector=`<div class="court-mode-panel"><div class="court-mode-head"><strong>How should courts be organized?</strong><span class="small-caps">ADMIN SETTING</span></div>
@@ -610,7 +629,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
         <button type="button" class="court-mode-option ${courtMode==='mixed'?'is-selected':''}" data-action="court-mode" data-mode="mixed" aria-pressed="${courtMode==='mixed'}" ${e.status!=='open'?'disabled':''}><span class="court-mode-symbol">🏐</span><span><strong>Balanced mixed courts</strong><small>Default · Spread advanced players across both courts</small></span></button>
         <button type="button" class="court-mode-option ${courtMode==='split'?'is-selected':''}" data-action="court-mode" data-mode="split" aria-pressed="${courtMode==='split'}" ${e.status!=='open'?'disabled':''}><span class="court-mode-symbol">🏆</span><span><strong>Competitive / beginner courts</strong><small>Court 1: stronger players · Court 2: beginner-friendly</small></span></button>
       </div><p class="subtle court-mode-footnote">${e.status==='open'?'You can switch before publishing teams. Teams are then balanced within the chosen court setup.':'Court mode is locked while teams are playing. Finish or reset the round to change it.'}</p></div>`;
-    const controls=`<section class="panel admin-section"><div class="panel-head"><h3>Session management</h3>${statusPill(e.status==='open'?'Accepting players':'Matches live',e.status==='open'?'':'muted')}</div><div class="meta-line"><span>${safe(e.title)}</span><span>•</span><span>${safe(niceDate(e.date))}</span><span>•</span><span>${e.team_size}v${e.team_size}</span><span>•</span><span>Round ${e.round_number||1}</span><span>•</span><span>${pub.roster.length}/${e.capacity} checked in</span></div>${modeSelector}<div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="gender-balance-toggle" ${admin?.gender_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance women across teams</strong><small>Optional · Distribute registered women across teams while keeping team MMR close. Unknown gender is not assumed.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel position-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="position-balance-toggle" ${admin?.position_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance teams by volleyball position</strong><small>Optional · Spread setters, hitters, middles, and liberos using primary and secondary positions. Flex can fill any role. MMR balance stays first.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel visibility-panel"><label class="gender-balance-check"><input type="checkbox" id="show-player-positions-toggle" ${e.show_player_positions===true?'checked':''} /><span><strong>Show primary &amp; secondary positions on Live Courts</strong><small>Optional · OFF by default. When enabled, all visitors can see both position preferences beside each checked-in player's assigned team. Separate from assigned on-court roles.</small></span></label><span class="small-caps">ADMIN ONLY</span></div>${e.status==='open'?`<p class="subtle">${!canGenerate?`Need ${plural(6-pub.roster.length,'more registered player')} before making six teams.`:slots?`${plural(slots,'open spot')} will be filled with unrated Sub Needed placeholders. A random sub can play without gaining or losing MMR.`:'Ready to balance six full teams. Existing ratings carry over from earlier rounds.'}</p><button type="button" class="btn btn-primary" data-action="generate" ${!canGenerate?'disabled':''}>⚡ Balance ${e.round_number>1?'next-round':'first-round'} teams${slots?` · ${slots} sub ${slots===1?'slot':'slots'}`:''}</button>`:`<p class="subtle">${results}/6 matches complete this round. Normally about ±12 MMR per player for even teams; each player's first 12 matches have double adjustments.</p>${roundComplete?`<div class="hint" style="margin:13px 0">All six games finished! Start another balanced round when everyone is ready.</div><button class="btn btn-primary btn-full" data-action="next-round">↻ Start next balanced round →</button>`:''}<div class="button-row"><button type="button" class="btn btn-secondary btn-small" data-action="undo" ${results===0?'disabled':''}>↶ Undo latest result</button><button type="button" class="btn btn-secondary btn-small" data-action="reset" ${results?'disabled':''}>↻ Reshuffle teams</button></div>`}<div class="divider"></div><button type="button" class="btn btn-danger btn-small" data-action="close">Finish this session</button><div class="warning">Finishing this session allows another to be created. Ratings and player profiles carry forward.</div></section>`;
+    const controls=`<section class="panel admin-section" id="court-admin-session"><div class="panel-head"><h3>⚙ Session management</h3>${statusPill(e.status==='open'?'Accepting players':'Matches live',e.status==='open'?'':'muted')}</div><div class="meta-line"><span>${safe(e.title)}</span><span>•</span><span>${safe(niceDate(e.date))}</span><span>•</span><span>${e.team_size}v${e.team_size}</span><span>•</span><span>Round ${e.round_number||1}</span><span>•</span><span>${pub.roster.length}/${e.capacity} checked in</span></div>${modeSelector}<div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="gender-balance-toggle" ${admin?.gender_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance women across teams</strong><small>Optional · Distribute registered women across teams while keeping team MMR close. Unknown gender is not assumed.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel position-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="position-balance-toggle" ${admin?.position_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance teams by volleyball position</strong><small>Optional · Spread setters, hitters, middles, and liberos using primary and secondary positions. Flex can fill any role. MMR balance stays first.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel visibility-panel"><label class="gender-balance-check"><input type="checkbox" id="show-player-positions-toggle" ${e.show_player_positions===true?'checked':''} /><span><strong>Show primary &amp; secondary positions on Live Courts</strong><small>Optional · OFF by default. When enabled, all visitors can see both position preferences beside each checked-in player's assigned team. Separate from assigned on-court roles.</small></span></label><span class="small-caps">ADMIN ONLY</span></div>${e.status==='open'?`<p class="subtle">${!canGenerate?`Need ${plural(6-pub.roster.length,'more registered player')} before making six teams.`:slots?`${plural(slots,'open spot')} will be filled with unrated Sub Needed placeholders. A random sub can play without gaining or losing MMR.`:'Ready to balance six full teams. Existing ratings carry over from earlier rounds.'}</p><button type="button" class="btn btn-primary" data-action="generate" ${!canGenerate?'disabled':''}>⚡ Balance ${e.round_number>1?'next-round':'first-round'} teams${slots?` · ${slots} sub ${slots===1?'slot':'slots'}`:''}</button>`:`<p class="subtle">${results}/6 matches complete this round. Normally about ±12 MMR per player for even teams; each player's first 12 matches have double adjustments.</p>${roundComplete?`<div class="hint" style="margin:13px 0">All six games finished! Start another balanced round when everyone is ready.</div><button class="btn btn-primary btn-full" data-action="next-round">↻ Start next balanced round →</button>`:''}<div class="button-row"><button type="button" class="btn btn-secondary btn-small" data-action="court-jump" data-target="score-corrections" ${results===0?'disabled':''}>↶ Score corrections ↑</button><button type="button" class="btn btn-secondary btn-small" data-action="reset" ${results?'disabled':''}>↻ Reshuffle teams</button></div>`}<div class="divider"></div><button type="button" class="btn btn-danger btn-small" data-action="close">Finish this session</button><div class="warning">Finishing this session allows another to be created. Ratings and player profiles carry forward.</div></section>`;
     return controls;
   }
   function renderPrivateMatchRatings(){
@@ -680,6 +699,24 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'view-attendance':switchTab('who');break;
     case 'generate':await handleGenerate();break;
     case 'jump-ratings':{document.querySelector('#view-courts #live-private-results')?.scrollIntoView({behavior:'smooth',block:'start'});break;}
+    case 'court-jump':{
+      if(tab!=='courts')switchTab('courts');
+      const target=btn.dataset.target;
+      const allowed=['court-team-rosters','court-1-matches','court-2-matches','score-corrections','live-private-results','court-admin-session'];
+      if(!allowed.includes(target) || (['score-corrections','live-private-results','court-admin-session'].includes(target)&&!adminGranted))break;
+      document.getElementById(target)?.scrollIntoView({behavior:'smooth',block:'start'});
+      break;
+    }
+    case 'undo-score':{
+      if(!adminGranted||pub?.event?.status!=='locked')break;
+      const last=latestCompletedMatch();
+      if(!last || last.id!==btn.dataset.match){flash('Only the most recently saved match can be undone. Refresh to see the latest result.',true);break;}
+      const left=teamName(teamById(last.team_a_id)),right=teamName(teamById(last.team_b_id));
+      const message=`UNDO FINAL SCORE?\n\n${last.court===1?'BLUE COURT 1':'RED COURT 2'} · Match ${last.order}\n${left} ${last.score_a} – ${last.score_b} ${right}\n\nThis reopens the match, restores the affected players’ previous MMR and win/loss records, and may change the following matchup.\n\nOnly the latest result can be undone. To correct an older match, reverse newer results first.\n\nCancel = keep the score.`;
+      if(!confirm(message))break;
+      await act(()=>api.undo(pub.event.id),`Court ${last.court} · Match ${last.order} score undone. Previous MMR and records restored. Enter the corrected score on Live Courts.`);
+      break;
+    }
     case 'rank-filter':{if(!adminGranted)break;const id=btn.dataset.rank;if(id!=='All'&&!RANK_TIERS.some(t=>t.id===id))break;leaderboardTier=id;$('#leaderboard-body').innerHTML=renderLeaderboard();break;}
     case 'rank-expand':{if(!adminGranted||!RANK_TIERS.some(t=>t.id===btn.dataset.rank))break;const id=btn.dataset.rank;expandedRankingTiers.has(id)?expandedRankingTiers.delete(id):expandedRankingTiers.add(id);$('#leaderboard-body').innerHTML=renderLeaderboard();break;}
     case 'toggle-profiles':{showAllProfiles=!showAllProfiles;const panel=document.querySelector('#admin-body .admin-roster');if(panel){const input=document.querySelector('#player-search');const focusId=document.activeElement?.id;const pos=input?.selectionStart;$('#admin-body').innerHTML=renderAdmin();if(focusId==='player-search'){const restored=$('#player-search');restored?.focus();if(pos!==null&&pos!==undefined)restored?.setSelectionRange(pos,pos);}}break;}

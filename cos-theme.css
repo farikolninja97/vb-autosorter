@@ -182,3 +182,19 @@ html[data-brand="cos"][data-theme="dark"] .hero{
  html[data-brand="cos"] .hero{background-position:center,right center;background-size:cover,auto 100%}
 }
 @media(max-width:400px){html[data-brand="cos"] .brand-text strong{font-size:21px}html[data-brand="cos"] .brand-text small{letter-spacing:.45px}}
+
+/* V1.25: Court identity deliberately stays blue/red even with the COS theme. */
+html[data-brand="cos"] #view-courts .court-roster-1,html[data-brand="cos"] #view-courts .court-schedule-1{border-color:#1764b7!important}
+html[data-brand="cos"] #view-courts .court-roster-2,html[data-brand="cos"] #view-courts .court-schedule-2{border-color:#c83750!important}
+html[data-brand="cos"] #view-courts .court-roster-1 .court-header,html[data-brand="cos"] #view-courts .court-schedule-1 .court-schedule-head{background:linear-gradient(120deg,#11417f,#1d68b8)!important;color:#fff}
+html[data-brand="cos"] #view-courts .court-roster-2 .court-header,html[data-brand="cos"] #view-courts .court-schedule-2 .court-schedule-head{background:linear-gradient(120deg,#821729,#bd3148)!important;color:#fff}
+html[data-brand="cos"] #view-courts .court-roster-1 .team{background:#fff;border-color:#b3d3f8}
+html[data-brand="cos"] #view-courts .court-roster-2 .team{background:#fff;border-color:#f1bec8}
+html[data-brand="cos"][data-theme="dark"] #view-courts .court-roster-1,html[data-brand="cos"][data-theme="dark"] #view-courts .court-schedule-1{background:#102742!important;border-color:#3a84d3!important}
+html[data-brand="cos"][data-theme="dark"] #view-courts .court-roster-2,html[data-brand="cos"][data-theme="dark"] #view-courts .court-schedule-2{background:#3b1c2c!important;border-color:#e05f75!important}
+html[data-brand="cos"][data-theme="dark"] #view-courts .court-roster-1 .team{background:#172d4b;border-color:#3b608b}
+html[data-brand="cos"][data-theme="dark"] #view-courts .court-roster-2 .team{background:#492839;border-color:#8b485b}
+html[data-brand="cos"] #view-courts .court-roster-1 .team-title{color:#1155a2}
+html[data-brand="cos"] #view-courts .court-roster-2 .team-title{color:#b21d35}
+html[data-brand="cos"][data-theme="dark"] #view-courts .court-roster-1 .team-title{color:#a0d1ff}
+html[data-brand="cos"][data-theme="dark"] #view-courts .court-roster-2 .team-title{color:#ffc0cd}
