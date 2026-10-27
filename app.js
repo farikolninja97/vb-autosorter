@@ -64,9 +64,77 @@
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.30';
+  const APP_VERSION='1.31';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
+  // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
+  let pendingTeams=null, pendingTeamsKey=null, draftSelection=null, draftStale=false;
+  // Hidden, admin-only convenience feature. Five taps on the Team Preview title
+  // within four seconds toggles the local, pre-publish roster swap editor.
+  // This is a UI easter egg, NOT an authorization boundary: RPCs still check admins.
+  let manualSwapUnlocked=false, secretTapCount=0, secretTapStart=0;
+  function lockManualSwaps(){manualSwapUnlocked=false;secretTapCount=0;secretTapStart=0;draftSelection=null;}
+  function handleSecretPreviewTap(){
+    if(!adminGranted||!currentDraft())return;
+    const now=Date.now();
+    if(now-secretTapStart>4000){secretTapStart=now;secretTapCount=0;}
+    secretTapCount+=1;
+    if(secretTapCount<5)return;
+    secretTapCount=0;secretTapStart=0;
+    manualSwapUnlocked=!manualSwapUnlocked;
+    draftSelection=null;
+    updateDraftView();
+    flash(manualSwapUnlocked?'Secret roster editor unlocked. Select two players to swap before publishing.':'Roster editor locked.');
+  }
+  function discardDraft(){pendingTeams=null;pendingTeamsKey=null;draftSelection=null;}
+  function draftFingerprint(){
+    if(!pub?.event||!admin?.players)return '';
+    const roster=priorityRoster().slice(0,pub.event.capacity);
+    const byId=new Map(admin.players.map(p=>[p.id,p]));
+    return JSON.stringify({session:pub.event.id,round:pub.event.round_number,status:pub.event.status,
+      size:pub.event.team_size,mode:pub.event.court_mode,gender:admin.gender_balance===true,
+      positions:admin.position_balance===true,history:admin.previous_teams||[],
+      selected:roster.map(r=>{const p=byId.get(r.id);return [r.id,r.checked_at,r.rounds_played,p?.mmr,p?.position,p?.secondary_position,p?.gender];})});
+  }
+  function currentDraft(){
+    if(!pendingTeams)return null;
+    if(!adminGranted||pub?.event?.status!=='open'||pendingTeamsKey!==draftFingerprint()){
+      discardDraft();draftStale=true;return null;
+    }
+    return pendingTeams;
+  }
+  function reassignDraftRoles(){
+    if(!pendingTeams)return;
+    if(admin?.position_balance===true){pendingTeams=pendingTeams.map(team=>window.RallyMath.assignTeamPositions(team));}
+    else{pendingTeams=pendingTeams.map(team=>team.map(({assigned_position,...p})=>({...p})));}
+  }
+  function updateDraftView(){
+    const panel=document.querySelector('#team-draft-container');
+    if(panel)panel.innerHTML=renderTeamDraft();
+  }
+  function draftMemberLabel(p){return p.is_placeholder?'Sub needed':p.name;}
+  function renderTeamDraft(){
+    const groups=currentDraft();
+    if(!groups)return draftStale?'<div class="draft-stale" role="alert">Attendance or team settings changed. Generate a fresh preview before publishing.</div>':'';
+    const averages=groups.map(window.RallyMath.teamAverage);
+    const sel=draftSelection&&groups[draftSelection.team]?.[draftSelection.slot];
+    const warning=(group)=>!group.some(p=>!p.is_placeholder&&(p.position||p.primary_position)==='Setter');
+    return `<section class="team-draft" aria-label="Unpublished team preview">
+      <div class="team-draft-head"><div><span class="draft-label">ADMIN ONLY · NOT PUBLISHED</span><h3><button type="button" class="draft-secret-trigger" data-action="draft-secret-tap" aria-label="Team Preview">Team Preview</button></h3>${manualSwapUnlocked?'<p class="draft-unlocked-note">🔓 Manual roster editing unlocked. Tap <strong>Select</strong>, then <strong>Swap here</strong> on another player or substitute slot. Tap the Team Preview title five more times to hide editing.</p>':'<p>Review the six suggested teams and their averages, then publish or generate another set.</p>'}</div><span class="draft-changes">Nothing goes live until you publish.</span></div>
+      <div class="draft-summary"><strong>Average MMR spread: ${safe(window.RallyMath.spread(groups))}</strong><span>${groups.flat().filter(p=>p.is_placeholder).length} unrated sub slots</span>${admin.gender_balance===true?`<span>Women per team: ${groups.map(g=>g.filter(p=>!p.is_placeholder&&p.gender==='Woman').length).join(' / ')}</span>`:''}</div>
+      ${sel?`<div class="draft-selected" role="status">Selected: <strong>${safe(draftMemberLabel(sel))}</strong> · Court ${Math.floor(draftSelection.team/3)+1}, Team ${draftSelection.team%3+1}. Pick another roster slot to swap. <button type="button" class="btn btn-small btn-secondary" data-action="draft-cancel-selection">Cancel selection</button></div>`:''}
+      <div class="draft-courts">${[1,2].map(court=>`<section class="draft-court draft-court-${court}" aria-label="Draft Court ${court}"><h4>${court===1?'🔵':'🔴'} Court ${court}</h4><div class="draft-teams">${groups.slice((court-1)*3,court*3).map((team,index)=>{
+        const ti=(court-1)*3+index;
+        return `<div class="draft-team"><div class="draft-team-heading"><strong>Team ${index+1}</strong>${warning(team)?'<span class="draft-setter-flag" title="No primary Setter" aria-label="No primary Setter">⚠</span>':''}<span class="draft-team-average">${Math.round(averages[ti])} avg MMR</span></div>
+        <ul class="draft-player-list">${team.map((p,si)=>{
+          const active=Boolean(draftSelection&&draftSelection.team===ti&&draftSelection.slot===si);
+          return `<li class="draft-player ${active?'draft-player-selected':''}"><div class="draft-player-details"><strong>${safe(draftMemberLabel(p))}</strong><small>${p.is_placeholder?'Unrated placeholder':`${safe(p.position||'Unspecified')}${p.secondary_position&&p.secondary_position!=='Unspecified'?` / ${safe(p.secondary_position)}`:''} · ${Number(p.mmr)} MMR`}${p.assigned_position?`<span class="draft-assigned"> · Assigned: ${safe(p.assigned_position)}</span>`:''}</small></div>${manualSwapUnlocked?`<button type="button" class="btn btn-small ${active?'btn-primary':'btn-secondary'} draft-swap-btn" data-action="draft-swap-slot" data-team="${ti}" data-slot="${si}" aria-pressed="${active}">${active?'Selected':sel?'Swap here':'Select'}</button>`:''}</li>`;
+        }).join('')}</ul></div>`;
+      }).join('')}</div></section>`).join('')}</div>
+      <div class="draft-footer"><div><button type="button" class="btn btn-secondary" data-action="draft-regenerate">↻ Generate different teams</button> <button type="button" class="btn btn-secondary" data-action="draft-discard">Discard preview</button></div><button type="button" class="btn btn-primary" data-action="draft-publish">✓ Publish these teams</button></div>
+      <p class="draft-disclaimer">Positions are suggestions. ⚠ marks a team without a primary Setter (admin-only). Manually adjusted rosters may differ from the automatic MMR, gender, and position balance; review averages before publishing.</p>
+    </section>`;
+  }
   // Keep unsaved scores when a court refreshes, or when an admin checks another page.
   const scoreDrafts=new Map();
   let demoData=null, modeEpoch=0;
@@ -362,7 +430,7 @@
     }
     if(!enable&&!configured){flash('A Supabase connection is required.',true);return false;}
     if(demo===enable)return true;
-    modeEpoch++;demo=enable;
+    modeEpoch++;discardDraft();lockManualSwaps();draftStale=false;demo=enable;
     if(enable)closeSyncChannel();
     else{brandCheckedAt=0;openSyncChannel();}
     if(enable)demoBrand=siteBrand;else demoBrand=null;
@@ -378,7 +446,7 @@
   }
   function loadDemoScenario(count){
     if(!demo)throw Error('Practice scenarios only run in Demo Mode.');
-    demoData=seedDemo();scoreDrafts.clear();
+    demoData=seedDemo();scoreDrafts.clear();discardDraft();draftStale=false;
     demoData.signups=demoData.players.slice(0,count).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));
     storeDemo();searchText='';attendanceSearch='';attendanceDropdownOpen=false;
   }
@@ -388,8 +456,10 @@
     const players=priorityRoster().slice(0,pub.event.capacity).map(p=>admin.players.find(x=>x.id===p.id));
     if(players.length<6){flash('Check in at least six sample players first.',true);return;}
     const groups=window.RallyMath.makeTeams(players,pub.event.team_size,admin.previous_teams||[],pub.event.court_mode==='split'?'split':'mixed',{balanceWomen:admin.gender_balance===true,balancePositions:admin.position_balance===true});
-    const worked=await act(()=>api.publish(pub.event.id,groups),'Six practice teams built. Record scores here or tap Simulate next match.');
-    if(worked)switchTab('courts');
+    pendingTeams=groups;pendingTeamsKey=draftFingerprint();lockManualSwaps();draftStale=false;
+    switchTab('courts');
+    document.getElementById('team-draft-container')?.scrollIntoView({behavior:'smooth',block:'start'});
+    flash('Demo teams ready for review. Publish or generate another lineup.');
   }
   async function demoScoreNext(){
     if(!demo||!pub?.event)return;
@@ -615,14 +685,14 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     // Ratings belong ONLY to Live Courts, never to the Admin tab. Keep this block after scores.
     const privateTools=adminGranted?`<div class="courts-admin-section" id="court-admin-tools">${renderPrivateMatchRatings()}${renderSessionManagement()}</div>`:'';
     if(!e)return `${title}<div class="empty"><strong>No active session</strong><p>Once check-in opens, the court schedule will show here.</p></div>${privateTools}`;
-    if(!pub.teams.length)return `${title}<div class="empty"><span class="empty-icon">🏐</span><strong>Waiting for team assignments</strong><p>${adminGranted?'Use Check-In to mark attendance, then open Session Settings below to create the teams.':'Teams will appear here after the organizers finish check-in and publish the round.'}</p></div>${privateTools}`;
+    if(!pub.teams.length)return `${title}${adminGranted&&e.status==='open'?`<div id="team-draft-container">${renderTeamDraft()}</div>`:''}<div class="empty"><span class="empty-icon">🏐</span><strong>Waiting for team assignments</strong><p>${adminGranted?'Check attendance, then generate and review teams in Session Settings below before publishing.':'Teams will appear here after the organizers finish check-in and publish the round.'}</p></div>${privateTools}`;
     const groups=[1,2].map(court=>{
       const teams=pub.teams.filter(t=>t.court===court).sort((a,b)=>a.number-b.number);
       const matches=pub.matches.filter(m=>m.court===court).sort((a,b)=>a.order-b.order);
       const gamesDone=matches.filter(m=>m.winner_team_id).length;
       const courtTitle=e.court_mode==='split'?(court===1?'Court 01 · Competitive':'Court 02 · Beginner-friendly'):`Court 0${court}`;
       const header=`<div class="court-header"><div><span class="court-color-label">${court===1?'🔵 BLUE COURT':'🔴 RED COURT'}</span><h3>${courtTitle}</h3><p>${gamesDone}/3 matches completed</p></div>${statusPill(gamesDone===3?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===3?'win':'muted')}</div>`;
-      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}</div>${adminTeamAverage(t)}${adminGranted&&!t.players.some(p=>!p.is_placeholder&&((admin?.players||[]).find(x=>x.id===p.id)?.position==='Setter'))?'<div class="team-setter-warning" role="note">⚠ No primary Setter · Check lineup before playing</div>':''}<ul class="team-members">${t.players.map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute${assignedRole(p)}</small></li>`:`<li><span class="team-member-name">${safe(p.name)}</span>${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
+      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}</div>${adminTeamAverage(t)}${adminGranted&&!t.players.some(p=>!p.is_placeholder&&((admin?.players||[]).find(x=>x.id===p.id)?.position==='Setter'))?'<span class="team-setter-flag" title="No primary Setter" role="img" aria-label="No primary Setter">⚠</span>':''}<ul class="team-members">${t.players.map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute${assignedRole(p)}</small></li>`:`<li><span class="team-member-name">${safe(p.name)}</span>${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
       const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of 3 complete</span></div>${scoreCorrectionPanel(court)}<div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div></section>`;
       return {roster,schedule};
     });
@@ -708,7 +778,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
         <button type="button" class="court-mode-option ${courtMode==='mixed'?'is-selected':''}" data-action="court-mode" data-mode="mixed" aria-pressed="${courtMode==='mixed'}" ${e.status!=='open'?'disabled':''}><span class="court-mode-symbol">🏐</span><span><strong>Balanced mixed courts</strong><small>Default · Spread advanced players across both courts</small></span></button>
         <button type="button" class="court-mode-option ${courtMode==='split'?'is-selected':''}" data-action="court-mode" data-mode="split" aria-pressed="${courtMode==='split'}" ${e.status!=='open'?'disabled':''}><span class="court-mode-symbol">🏆</span><span><strong>Competitive / beginner courts</strong><small>Court 1: stronger players · Court 2: beginner-friendly</small></span></button>
       </div><p class="subtle court-mode-footnote">${e.status==='open'?'You can switch before publishing teams. Teams are then balanced within the chosen court setup.':'Court mode is locked while teams are playing. Finish or reset the round to change it.'}</p></div>`;
-    const controls=`<section class="panel admin-section" id="court-admin-session"><div class="panel-head"><h3>⚙ Session management</h3>${statusPill(e.status==='open'?'Accepting players':'Matches live',e.status==='open'?'':'muted')}</div><div class="meta-line"><span>${safe(e.title)}</span><span>•</span><span>${safe(niceDate(e.date))}</span><span>•</span><span>${e.team_size}v${e.team_size}</span><span>•</span><span>To ${e.target_score||25} · Win by 2</span><span>•</span><span>Round ${e.round_number||1}</span><span>•</span><span>${pub.roster.length}/${e.capacity} checked in</span></div>${modeSelector}<div class="score-target-settings"><label for="score-target-select"><strong>Target points per match</strong><small>Win by 2. Deuce scores can exceed the target, up to 99.</small></label><select class="field" id="score-target-select" aria-label="Target score" ${e.status!=='open'?'disabled':''}>${[15,21,25].map(n=>`<option value="${n}" ${Number(e.target_score||25)===n?'selected':''}>${n} points</option>`).join('')}</select><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="gender-balance-toggle" ${admin?.gender_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance women across teams</strong><small>Optional · Distribute registered women across teams while keeping team MMR close. Unknown gender is not assumed.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel position-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="position-balance-toggle" ${admin?.position_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance teams by volleyball position</strong><small>Optional · Spread setters, hitters, middles, and liberos using primary and secondary positions. Flex can fill any role. MMR balance stays first.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel visibility-panel"><label class="gender-balance-check"><input type="checkbox" id="show-player-positions-toggle" ${e.show_player_positions===true?'checked':''} /><span><strong>Show primary &amp; secondary positions on Live Courts</strong><small>Optional · OFF by default. When enabled, all visitors can see both position preferences beside each checked-in player's assigned team. Separate from assigned on-court roles.</small></span></label><span class="small-caps">ADMIN ONLY</span></div>${e.status==='open'?`<p class="subtle">${!canGenerate?`Need ${plural(6-pub.roster.length,'more registered player')} before making six teams.`:slots?`${plural(slots,'open spot')} will be filled with unrated Sub Needed placeholders. A random sub can play without gaining or losing MMR.`:'Ready to balance six full teams. Existing ratings carry over from earlier rounds.'}</p><button type="button" class="btn btn-primary" data-action="generate" ${!canGenerate?'disabled':''}>⚡ Balance ${e.round_number>1?'next-round':'first-round'} teams${slots?` · ${slots} sub ${slots===1?'slot':'slots'}`:''}</button>`:`<p class="subtle">${results}/6 matches complete this round. Normally about ±12 MMR per player for even teams; each player's first 12 matches have double adjustments.</p>${roundComplete?`<div class="hint" style="margin:13px 0">All six games finished! Start another balanced round when everyone is ready.</div><button class="btn btn-primary btn-full" data-action="next-round">↻ Start next balanced round →</button>`:''}<div class="button-row"><button type="button" class="btn btn-secondary btn-small" data-action="reset" ${results?'disabled':''}>↻ Reshuffle teams</button></div>`}<div class="divider"></div><button type="button" class="btn btn-danger btn-small" data-action="close">Finish this session</button><div class="warning">Finishing this session allows another to be created. Ratings and player profiles carry forward.</div></section>`;
+    const controls=`<section class="panel admin-section" id="court-admin-session"><div class="panel-head"><h3>⚙ Session management</h3>${statusPill(e.status==='open'?'Accepting players':'Matches live',e.status==='open'?'':'muted')}</div><div class="meta-line"><span>${safe(e.title)}</span><span>•</span><span>${safe(niceDate(e.date))}</span><span>•</span><span>${e.team_size}v${e.team_size}</span><span>•</span><span>To ${e.target_score||25} · Win by 2</span><span>•</span><span>Round ${e.round_number||1}</span><span>•</span><span>${pub.roster.length}/${e.capacity} checked in</span></div>${modeSelector}<div class="score-target-settings"><label for="score-target-select"><strong>Target points per match</strong><small>Win by 2. Deuce scores can exceed the target, up to 99.</small></label><select class="field" id="score-target-select" aria-label="Target score" ${e.status!=='open'?'disabled':''}>${[15,21,25].map(n=>`<option value="${n}" ${Number(e.target_score||25)===n?'selected':''}>${n} points</option>`).join('')}</select><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="gender-balance-toggle" ${admin?.gender_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance women across teams</strong><small>Optional · Distribute registered women across teams while keeping team MMR close. Unknown gender is not assumed.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel position-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="position-balance-toggle" ${admin?.position_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance teams by volleyball position</strong><small>Optional · Spread setters, hitters, middles, and liberos using primary and secondary positions. Flex can fill any role. MMR balance stays first.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel visibility-panel"><label class="gender-balance-check"><input type="checkbox" id="show-player-positions-toggle" ${e.show_player_positions===true?'checked':''} /><span><strong>Show primary &amp; secondary positions on Live Courts</strong><small>Optional · OFF by default. When enabled, all visitors can see both position preferences beside each checked-in player's assigned team. Separate from assigned on-court roles.</small></span></label><span class="small-caps">ADMIN ONLY</span></div>${e.status==='open'?`<p class="subtle">${!canGenerate?`Need ${plural(6-pub.roster.length,'more registered player')} before making six teams.`:slots?`${plural(slots,'open spot')} will be filled with unrated Sub Needed placeholders. A random sub can play without gaining or losing MMR.`:'Ready to balance six full teams. Existing ratings carry over from earlier rounds.'}</p><button type="button" class="btn btn-primary" data-action="generate" ${!canGenerate?'disabled':''}>⚡ ${currentDraft()?'Regenerate preview':`Preview ${e.round_number>1?'next-round':'first-round'} teams`}${slots?` · ${slots} sub ${slots===1?'slot':'slots'}`:''}</button>`:`<p class="subtle">${results}/6 matches complete this round. Normally about ±12 MMR per player for even teams; each player's first 12 matches have double adjustments.</p>${roundComplete?`<div class="hint" style="margin:13px 0">All six games finished! Start another balanced round when everyone is ready.</div><button class="btn btn-primary btn-full" data-action="next-round">↻ Start next balanced round →</button>`:''}<div class="button-row"><button type="button" class="btn btn-secondary btn-small" data-action="reset" ${results?'disabled':''}>↻ Reshuffle teams</button></div>`}<div class="divider"></div><button type="button" class="btn btn-danger btn-small" data-action="close">Finish this session</button><div class="warning">Finishing this session allows another to be created. Ratings and player profiles carry forward.</div></section>`;
     return controls;
   }
   function renderPrivateMatchRatings(){
@@ -738,7 +808,46 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     return `<div class="form-stack"><label class="label-input" for="player-search">Find player</label><input class="field" id="player-search" type="search" placeholder="Search any name" value="${safe(searchText)}" autocomplete="off"/><div class="profile-list-meta"><strong class="profile-count" id="profile-result-count">${searchText.trim()?`${count} matching ${count===1?'player':'players'}`:`Showing ${visible.length} of ${arr.length} players`}</strong>${showToggle}</div></div><div class="admin-roster" id="profile-results" style="margin-top:15px">${playerCards||'<p class="subtle">No matching player profiles.</p>'}</div>`;
   }
   async function act(job,message){if(mutating)return false;mutating=true;try{await job();flash(message);await refresh();announceChange(message==='Website theme saved for everyone.'?'theme':'state');return true;}catch(e){flash(errText(e),true);return false;}finally{mutating=false;}}
-  async function handleGenerate(){const e=pub.event;if(!e||!admin)return;const players=priorityRoster().slice(0,e.capacity).map(r=>admin.players.find(p=>p.id===r.id));if(players.some(p=>!p)){flash('Unable to load player ratings. Refresh first.',true);return;}const groups=window.RallyMath.makeTeams(players,e.team_size,admin.previous_teams||[],e.court_mode==='split'?'split':'mixed',{balanceWomen:admin.gender_balance===true,balancePositions:admin.position_balance===true});const range=window.RallyMath.spread(groups);const missing=groups.flat().filter(p=>p.is_placeholder).length;const selected=groups.flat().filter(p=>!p.is_placeholder).length;const womenCounts=groups.map(g=>g.filter(p=>!p.is_placeholder&&p.gender==='Woman').length);const noSetter=groups.map((g,i)=>!g.some(p=>!p.is_placeholder&&(p.position||p.primary_position)==='Setter')?`Court ${Math.floor(i/3)+1} Team ${i%3+1}`:null).filter(Boolean);if(!confirm(`Publish six balanced teams for round ${e.round_number||1}?\n\n${selected} registered players · ${missing} unrated sub ${missing===1?'slot':'slots'}.\nCourt layout: ${e.court_mode==='split'?'Court 1 competitive · Court 2 beginner-friendly':'Mixed courts with advanced players distributed'}.\n${e.court_mode==='split'?'Teams are balanced within each court.':'Registered-player average MMR spread: '+range+' points.'}\n${admin.gender_balance?'Balance women: ON · Women per team '+womenCounts.join(' / '):'Balance women: OFF'}. Position sorting: ${admin.position_balance?'ON — primary, secondary, and Flex wildcard roles considered':'OFF'}. MMR balance remains the priority.\nTeammate history across all previous rounds is considered.\n${noSetter.length?'⚠ NO PRIMARY SETTER: '+noSetter.join(', ')+'. Assign a capable Setter before play.\n':''}\nSub placeholders NEVER gain/lose MMR and do not appear on the leaderboard. The ${selected} selected players have the fewest completed rounds (check-in order breaks ties).`))return;await act(()=>api.publish(e.id,groups),'Balanced teams published to both courts. Unrated sub spots are clearly marked.');}
+  async function handleGenerate(){
+    const e=pub?.event;
+    if(!adminGranted||!admin||!e||e.status!=='open')return;
+    const players=priorityRoster().slice(0,e.capacity).map(r=>admin.players.find(p=>p.id===r.id));
+    if(players.length<6||players.some(p=>!p)){flash('Check in at least six registered players and refresh the admin list.',true);return;}
+    try{
+      pendingTeams=window.RallyMath.makeTeams(players,e.team_size,admin.previous_teams||[],e.court_mode==='split'?'split':'mixed',{balanceWomen:admin.gender_balance===true,balancePositions:admin.position_balance===true});
+      pendingTeamsKey=draftFingerprint();lockManualSwaps();draftStale=false;
+      render();
+      document.getElementById('team-draft-container')?.scrollIntoView({behavior:'smooth',block:'start'});
+      flash('Unpublished preview ready. Review the teams, then choose Publish.');
+    }catch(e){flash(errText(e),true);}
+  }
+  async function handleDraftSwap(team,slot){
+    const groups=currentDraft();if(!groups||!adminGranted||!manualSwapUnlocked)return;
+    if(!Number.isInteger(team)||team<0||team>=6||!Number.isInteger(slot)||slot<0||slot>=groups[team].length)return;
+    if(!draftSelection){draftSelection={team,slot};updateDraftView();return;}
+    const prev=draftSelection;draftSelection=null;
+    if(prev.team===team&&prev.slot===slot){updateDraftView();return;}
+    // Fixed-sized teams: swap two occupied roster slots. Swapping with Sub needed is a move.
+    [groups[team][slot],groups[prev.team][prev.slot]]=[groups[prev.team][prev.slot],groups[team][slot]];
+    reassignDraftRoles();updateDraftView();
+  }
+  async function handlePublishDraft(){
+    const groups=currentDraft(),e=pub?.event;
+    if(!adminGranted||!groups||!e){flash('Preview is out of date. Generate it again.',true);return;}
+    const expected=new Set(priorityRoster().slice(0,e.capacity).map(p=>p.id));
+    const real=groups.flat().filter(p=>!p.is_placeholder);
+    const present=new Set(real.map(p=>p.id));
+    const subs=groups.flat().filter(p=>p.is_placeholder);
+    if(groups.length!==6||groups.some(g=>g.length!==e.team_size)||real.length!==expected.size||present.size!==expected.size||[...present].some(id=>!expected.has(id))||subs.length!==e.capacity-expected.size){
+      flash('Roster validation failed. Generate a new team preview.',true);return;
+    }
+    const avg=groups.map(window.RallyMath.teamAverage);
+    const range=window.RallyMath.spread(groups);
+    const message=`Publish these reviewed teams for round ${e.round_number||1}?\n\n${real.length} registered players · ${subs.length} unrated sub spots.\nCourt 1 average MMR: ${avg.slice(0,3).map(Math.round).join(' / ')}\nCourt 2 average MMR: ${avg.slice(3).map(Math.round).join(' / ')}\nOverall spread: ${range} MMR.\n\nThese rosters will become visible to everybody. You cannot swap players after publishing unless the round is reset.`;
+    if(!confirm(message))return;
+    const committed=await act(()=>api.publish(e.id,groups),'Reviewed teams published. Both courts now show the final rosters.');
+    if(committed){discardDraft();lockManualSwaps();draftStale=false;}
+  }
   function scoreValues(form){
     const rawA=form.querySelector('[name=score-a]')?.value?.trim()??'';
     const rawB=form.querySelector('[name=score-b]')?.value?.trim()??'';
@@ -775,6 +884,12 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'refresh':await refresh();break;
     case 'view-attendance':switchTab('who');break;
     case 'generate':await handleGenerate();break;
+    case 'draft-secret-tap':if(adminGranted)handleSecretPreviewTap();break;
+    case 'draft-swap-slot':if(adminGranted&&manualSwapUnlocked)await handleDraftSwap(Number(btn.dataset.team),Number(btn.dataset.slot));break;
+    case 'draft-cancel-selection':if(adminGranted){draftSelection=null;updateDraftView();}break;
+    case 'draft-publish':if(adminGranted)await handlePublishDraft();break;
+    case 'draft-discard':if(adminGranted){discardDraft();lockManualSwaps();draftStale=false;render();}break;
+    case 'draft-regenerate':if(adminGranted)await handleGenerate();break;
     case 'jump-ratings':{document.querySelector('#view-courts #live-private-results')?.scrollIntoView({behavior:'smooth',block:'start'});break;}
     case 'court-jump':{
       if(tab!=='courts')switchTab('courts');
