@@ -920,3 +920,12 @@ body[data-active-tab="courts"][data-has-teams="yes"] .hero {display:none!importa
 #view-courts .court-schedule-1 .live-score-form .btn-primary:hover:not(:disabled){background:#114c94;border-color:#0a3c77;color:#fff}
 #view-courts .court-schedule-2 .live-score-form .btn-primary{background:#bb243e;border-color:#9a1e34;color:#fff}
 #view-courts .court-schedule-2 .live-score-form .btn-primary:hover:not(:disabled){background:#981b32;border-color:#791228;color:#fff}
+
+/* V1.30: actionable Setter shortage notice and target selection. */
+.team-setter-warning {margin:8px 10px;padding:9px 11px;border:1px solid #d58a34;border-radius:8px;background:rgba(222,151,48,.14);color:var(--text,inherit);font-size:.83rem;font-weight:700;line-height:1.45;}
+.score-target-settings {display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:14px;margin:13px 0;border:1px solid var(--border,#64748b);border-radius:12px;background:var(--surface-2,rgba(100,116,139,.09));}
+.score-target-settings label {display:grid;gap:4px;flex:1 1 230px;}
+.score-target-settings label small {opacity:.8;line-height:1.5;}
+.score-target-settings select {width:min(160px,100%);flex:0 0 150px;}
+.score-target-settings .small-caps {flex:0 0 auto;}
+@media(max-width:540px){.score-target-settings select {flex:1 1 120px;width:100%;}}

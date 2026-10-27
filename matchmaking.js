@@ -1,4 +1,4 @@
-/* RallyRank V1.23 — MMR-first balance, optional gender and primary/secondary position distribution. */
+/* RallyRank V1.30 — MMR-first balance, optional gender and primary/secondary position distribution. */
 (function(root){
   'use strict';
   const TEAM_COUNT=6;
@@ -22,6 +22,18 @@
     const a=Number(scoreA),b=Number(scoreB);
     if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>99||b>99||a===b)throw Error('Enter different scores from 0 to 99.');
     return Math.min(4,Math.floor(Math.abs(a-b)/4));
+  }
+  // A set ends at the target when leading by >=2, or continues past the
+  // target until somebody gains a two-point lead (e.g. 27–25 to 25).
+  function validateFinalScore(scoreA,scoreB,target=25){
+    const a=Number(scoreA),b=Number(scoreB);
+    if(![15,21,25].includes(Number(target)))throw Error('Target score must be 15, 21 or 25.');
+    if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>99||b>99)throw Error('Scores must be whole numbers from 0 to 99.');
+    const high=Math.max(a,b),low=Math.min(a,b);
+    if(high<target || high-low<2 || (high>target && high-low!==2)){
+      throw Error(`Play to ${target}, win by 2. Valid examples: ${target}–${target-2} or ${target+2}–${target}.`);
+    }
+    return {a,b,winnerSide:a>b?'A':'B'};
   }
   function matchSwing(winnerAverage,loserAverage,scoreA,scoreB){
     return swing(winnerAverage,loserAverage)+marginBonus(scoreA,scoreB);
@@ -82,7 +94,7 @@
     for(const team of teams){
       const actual=realPlayers(team);
       for(let i=0;i<actual.length;i++)for(let j=i+1;j<actual.length;j++){
-        if(priorPairs.has(pairKey(actual[i].id,actual[j].id))) repeats++;
+        {const n=priorPairs.get(pairKey(actual[i].id,actual[j].id))||0; if(n)repeats+=2600*n+4400*n*n;}
       }
     }
     if(mode==='mixed'){
@@ -112,7 +124,7 @@
       }
     }
     if(balancePositions)ratingCost+=positionBalanceCost(teams,mode,teamSize);
-    return ratingCost+repeats*1800;
+    return ratingCost+repeats;
   }
   function makeTeams(players,teamSize,previousTeams=[],mode='mixed',options={}){
     if(!Number.isInteger(teamSize)||teamSize<2||teamSize>6)throw Error('Team size must be 2–6.');
@@ -125,10 +137,10 @@
     if(selected.some(p=>isPlaceholder(p)||!Number.isFinite(Number(p.mmr))))throw Error('Each checked-in player needs a valid MMR.');
     if(new Set(selected.map(p=>p.id)).size!==selected.length)throw Error('Duplicate player on signup list.');
     const missing=capacity-selected.length;
-    const priorPairs=new Set();
+    const priorPairs=new Map();
     for(const prev of previousTeams){
       const ids=prev.map(p=>typeof p==='string'?p:p.id).filter(p=>typeof p==='string'&&!p.startsWith('sub:'));
-      for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++)priorPairs.add(pairKey(ids[i],ids[j]));
+      for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){const key=pairKey(ids[i],ids[j]);priorPairs.set(key,(priorPairs.get(key)||0)+1);}
     }
     let best=null,bestScore=Infinity;
     for(let trial=0;trial<140;trial++){
@@ -226,7 +238,7 @@
     dfs(0,0,[]);
     return team.map((p,i)=>({...p,assigned_position:roles[bestSlots[i]]}));
   }
-  const api={makeTeams,swing,marginBonus,matchSwing,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,K_FACTOR};
+  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,K_FACTOR};
   root.RallyMath=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
