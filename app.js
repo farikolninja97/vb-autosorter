@@ -64,7 +64,7 @@
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.31';
+  const APP_VERSION='1.32';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -199,12 +199,22 @@
     roster:x.signups.map(s=>{const p=x.players.find(p=>p.id===s.player_id);return {id:p.id,name:p.name,checked_at:s.checked_at,team_id:x.teams.find(t=>t.players.some(y=>y.id===p.id))?.id||null,rounds_played:x.archives.filter(a=>a.teams.some(t=>t.players.some(y=>y.id===p.id))).length};}),
     // Demo mirrors the safe, names-only attendance field returned by the public RPC.
     checked_in_names:x.signups.map(s=>x.players.find(p=>p.id===s.player_id)?.name).filter(Boolean).sort((a,b)=>a.localeCompare(b)),
-    teams:x.teams.map(team=>({...team,players:team.players.map(member=>{const profile=x.players.find(p=>p.id===member.id);return {...member,...(x.event?.show_player_positions===true&&!member.is_placeholder&&profile?{primary_position:profile.position||'Unspecified',secondary_position:profile.secondary_position||'Unspecified'}:{})};})})),matches:x.matches.map(({mmr_changes,...match})=>match)};}
+    teams:x.teams.map(team=>({...team,players:team.players.map(member=>{const profile=x.players.find(p=>p.id===member.id);return {...member,...(x.event?.show_player_positions===true&&!member.is_placeholder&&profile?{primary_position:profile.position||'Unspecified',secondary_position:profile.secondary_position||'Unspecified'}:{})};})})),matches:x.matches.map(({mmr_changes,...match})=>match),redo_scores:(x.redo_scores||[]).map(({previous_player_states,...record})=>record),scoreActionsAvailable:true};}
   function demoLeaderboard(){return [...demoData.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name)).map(p=>({id:p.id,name:p.name,position:p.position||'Unspecified',wins:p.wins,losses:p.losses,mmr:p.mmr}));}
   function average(team){const registered=team.players.filter(p=>!p.is_placeholder).map(p=>demoData.players.find(x=>x.id===p.id));if(!registered.length)throw Error('Each team needs a registered player.');return registered.reduce((n,p)=>n+p.mmr,0)/registered.length;}
   function demoAction(fn){fn();storeDemo();return Promise.resolve(null);}
   const api={
-    async getPublic(){if(demo)return demoState();if(!db)return {event:null,roster:[],checked_in_names:[],teams:[],matches:[]};const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;return data;},
+    async getPublic(){
+      if(demo)return demoState();
+      if(!db)return {event:null,roster:[],checked_in_names:[],teams:[],matches:[],redo_scores:[],scoreActionsAvailable:false};
+      const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;
+      if(data?.event?.status!=='locked')return {...data,redo_scores:[],scoreActionsAvailable:false};
+      // Public response contains only court/match IDs and previously entered scores.
+      // Never request private ratings, player states or admin data on a kiosk.
+      const {data:redo,error:redoError}=await db.rpc('vmm_get_public_court_redo_state');
+      if(redoError)return {...data,redo_scores:[],scoreActionsAvailable:false};
+      return {...data,redo_scores:Array.isArray(redo)?redo:[],scoreActionsAvailable:true};
+    },
     async getAdmin(){if(demo)return {...demoState(),players:demoData.players,match_changes:demoData.matches.flatMap(m=>(m.mmr_changes||[]).map(c=>({...c,match_id:m.id}))),previous_teams:demoData.archives.flatMap(a=>a.teams.map(t=>t.players.map(p=>p.id))),redo_scores:demoData.redo_scores||[],gender_balance:demoData.event?.gender_balance===true,position_balance:demoData.event?.position_balance===true,show_player_positions:demoData.event?.show_player_positions===true};
       const {data,error}=await db.rpc('vmm_get_admin_state');if(error)throw error;
       const [{data:changes,error:changesError},{data:redo,error:redoError}]=await Promise.all([
@@ -213,7 +223,7 @@
       ]);
       if(changesError)throw changesError;
       if(redoError)throw redoError;
-      return {...data,match_changes:changes||[],redo_scores:redo||[]};},
+      return {...data,match_changes:changes||[],redo_scores:redo||[],scoreActionsAvailable:true};},
     async addPlayer(name,tier,position,checkIn,gender='Unspecified',secondaryPosition='Unspecified',customMmr=null){
       if(tier==='custom'&&(!Number.isInteger(customMmr)||customMmr<500||customMmr>2500))throw Error('Custom MMR must be a whole number between 500 and 2500.');
       if(demo)return demoAction(()=>{
@@ -605,8 +615,8 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       .sort((a,b)=>Number(b.completed_seq)-Number(a.completed_seq))[0]||null;
   }
   function availableRedo(court){
-    if(!adminGranted||pub?.event?.status!=='locked')return null;
-    const saved=(admin?.redo_scores||[]).find(r=>Number(r.court)===court);
+    if(pub?.event?.status!=='locked'||(!demo&&pub?.scoreActionsAvailable!==true))return null;
+    const saved=(pub?.redo_scores||admin?.redo_scores||[]).find(r=>Number(r.court)===court);
     const match=saved&&pub.matches.find(m=>m.id===saved.match_id);
     // A fresh score invalidates redo; don't offer stale actions even if the
     // current browser has not received the latest change notification yet.
@@ -615,7 +625,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   // One correction toolbar per court, no duplicate score buttons on matches or in Session Management.
   // The Redo button is ALWAYS visible; disabled until an actual undone result exists.
   function scoreCorrectionPanel(court){
-    if(!adminGranted||pub?.event?.status!=='locked')return '';
+    if(pub?.event?.status!=='locked'||(!demo&&pub?.scoreActionsAvailable!==true))return '';
     const recent=latestCompletedMatch(court),redo=availableRedo(court),label=`Court ${court}`;
     const lastResult=recent?`Match ${recent.order}: ${safe(teamName(teamById(recent.team_a_id)))} ${recent.score_a}–${recent.score_b} ${safe(teamName(teamById(recent.team_b_id)))}`:'No saved scores on this court yet';
     const undoButton=`<button type="button" class="btn btn-danger court-fix-button" data-action="undo-score" data-court="${court}" ${recent?`data-match="${safe(recent.id)}"`:'disabled aria-disabled="true"'}>↶ Undo Court ${court}</button>`;
@@ -673,7 +683,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   }
   function renderCourts(){
     const e=pub.event;
-    const canScore=Boolean(adminGranted&&e?.status==='locked');
+    const canScore=Boolean(e?.status==='locked'&&(demo||pub.scoreActionsAvailable===true));
     const hasTeams=Boolean(pub.teams?.length);
     const shortcuts=[
       ...(hasTeams?[['court-team-rosters','🏐 Team rosters',''],['court-1-matches','🔵 Court 1 scores','nav-court-blue'],['court-2-matches','🔴 Court 2 scores','nav-court-red']]:[]),
@@ -693,12 +703,12 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const courtTitle=e.court_mode==='split'?(court===1?'Court 01 · Competitive':'Court 02 · Beginner-friendly'):`Court 0${court}`;
       const header=`<div class="court-header"><div><span class="court-color-label">${court===1?'🔵 BLUE COURT':'🔴 RED COURT'}</span><h3>${courtTitle}</h3><p>${gamesDone}/3 matches completed</p></div>${statusPill(gamesDone===3?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===3?'win':'muted')}</div>`;
       const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}</div>${adminTeamAverage(t)}${adminGranted&&!t.players.some(p=>!p.is_placeholder&&((admin?.players||[]).find(x=>x.id===p.id)?.position==='Setter'))?'<span class="team-setter-flag" title="No primary Setter" role="img" aria-label="No primary Setter">⚠</span>':''}<ul class="team-members">${t.players.map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute${assignedRole(p)}</small></li>`:`<li><span class="team-member-name">${safe(p.name)}</span>${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
-      const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of 3 complete</span></div>${scoreCorrectionPanel(court)}<div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div></section>`;
+      const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of 3 complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div>${scoreCorrectionPanel(court)}</section>`;
       return {roster,schedule};
     });
     return `${title}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All six teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>
       <div class="court-matches-heading"><h3>Live matches & results</h3><p>Target ${e.target_score||25} · Win by 2. ${canScore?'Enter final scores directly below each match.':'Follow the match order and final scores.'}</p></div>
-      ${canScore?'<div class="courts-admin-notice">🔒 Admin scoring enabled · Enter final points below each match; each court has one correction toolbar.</div>':''}
+      ${canScore?'<div class="courts-community-notice">🏐 <strong>Community scoring is on.</strong> Anyone can record final scores or use Undo/Redo. Double-check the court and teams before confirming.</div>':e.status==='locked'&&!demo?'<div class="courts-community-notice" role="alert">⚠ Public scoring is not available yet. Ask an admin to install the V1.32 Supabase SQL update.</div>':''}
       <div class="courts-layout courts-matches-layout">${groups.map(g=>g.schedule).join('')}</div>
       <div class="hint" style="margin-top:15px">Every team plays two games. A temporary substitute can fill an open roster spot without receiving a rating.</div>${privateTools}`;
   }
@@ -759,7 +769,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
         ${active?'<label class="check-inline"><input type="checkbox" name="checkin" checked /> Check into the current session now</label>':''}
         <button class="btn btn-primary btn-full" type="submit">＋ Create player profile</button>
       </form></section>`;}
-  function renderAdmin(){if(!demo&&!user)return `<section class="panel" style="max-width:500px;margin:0 auto"><div class="panel-head"><h3 id="admin-title">Admin sign-in</h3>${statusPill('Private','muted')}</div><p class="subtle">Only approved staff can manage player profiles, attendance, team assignments, and match results.</p><form id="login-form" class="form-stack"><div><label for="admin-email" class="label-input">Email</label><input id="admin-email" class="field" type="email" name="email" placeholder="you@example.com" autocomplete="username" required /></div><div><label for="admin-password" class="label-input">Password</label><input id="admin-password" class="field" type="password" name="password" autocomplete="current-password" required /></div><button type="submit" class="btn btn-primary btn-full">Sign in securely</button></form><p class="subtle">Admins are approved in Supabase, not through a hardcoded website password.</p></section>`;
+  function renderAdmin(){if(!demo&&!user)return `<section class="panel" style="max-width:500px;margin:0 auto"><div class="panel-head"><h3 id="admin-title">Admin sign-in</h3>${statusPill('Private','muted')}</div><p class="subtle">Player profiles, attendance, team assignments, ratings, and event settings require admin access. Anyone can enter or correct match scores from Live Courts.</p><form id="login-form" class="form-stack"><div><label for="admin-email" class="label-input">Email</label><input id="admin-email" class="field" type="email" name="email" placeholder="you@example.com" autocomplete="username" required /></div><div><label for="admin-password" class="label-input">Password</label><input id="admin-password" class="field" type="password" name="password" autocomplete="current-password" required /></div><button type="submit" class="btn btn-primary btn-full">Sign in securely</button></form><p class="subtle">Admins are approved in Supabase, not through a hardcoded website password.</p></section>`;
     if(!adminGranted)return `<section class="panel"><div class="panel-head"><h3 id="admin-title">Admin permission required</h3></div><p>Your Supabase account is signed in but is not authorized in <code>vmm_admins</code>. Ask the database owner to add this account.</p><button data-action="logout" class="btn btn-secondary">Sign out</button></section>`;
     const header=`<div class="section-top"><div><h2 id="admin-title" class="section-title">Player administration</h2><p class="section-sub">${demo?'Private sandbox · approved admin':`Signed in as ${safe(user?.email||'admin')}`}</p></div>${!demo?'<button class="btn btn-small btn-secondary" data-action="logout">Sign out</button>':''}</div>`;
     const activeBrand=demo?(demoBrand||siteBrand):siteBrand;
@@ -862,7 +872,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     }catch(e){output.textContent=e.message||'Enter both final scores to see the winning team.';}
   }
   async function handleScore(form){
-    if(!adminGranted){flash('Admin sign-in is required to record results.',true);return;}
+    if(!demo&&pub?.scoreActionsAvailable!==true){flash('Scoring is unavailable. Ask an admin to install the V1.32 SQL update.',true);return;}
     const match=pub?.matches?.find(m=>m.id===form.dataset.match);
     if(!match||match.winner_team_id)return;
     let scores;try{scores=scoreValues(form);}catch(e){flash(errText(e),true);return;}
@@ -870,8 +880,8 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const winner=teamById(a>b?match.team_a_id:match.team_b_id);
     if(!winner){flash('One of the teams is not ready.',true);return;}
     if(!confirm(`Record Court ${match.court} · Match ${match.order}\n${teamName(teamById(match.team_a_id))} ${a} – ${b} ${teamName(teamById(match.team_b_id))}\nWinner: ${teamName(winner)}\n\nConfirm final score?`))return;
-    const saved=await act(()=>api.report(match.id,winner.id,a,b),`Court ${match.court} result saved: ${teamName(winner)} wins ${Math.max(a,b)}–${Math.min(a,b)}. See private rating details farther down Live Courts.`);
-    if(saved)scoreDrafts.delete(match.id);
+    const saved=await act(()=>api.report(match.id,winner.id,a,b),`Court ${match.court} result saved: ${teamName(winner)} wins ${Math.max(a,b)}–${Math.min(a,b)}.`);
+    if(saved)scoreDrafts.delete(match.id);else await refresh(true); // Another device may have saved first.
   }
   document.addEventListener('submit',async ev=>{const form=ev.target;if(form.classList.contains('live-score-form')){ev.preventDefault();await handleScore(form);return;}if(!['login-form','create-form','add-player-form'].includes(form.id))return;ev.preventDefault();const values=new FormData(form);if(form.id==='add-player-form'){const name=String(values.get('name')||'').trim(),tier=String(values.get('tier')||''),position=String(values.get('position')||''),gender=String(values.get('gender')||'Unspecified'),secondaryPosition=String(values.get('secondary_position')||'Unspecified'),checkIn=values.get('checkin')==='on',customRaw=String(values.get('custom_mmr')??'').trim(),customMmr=tier==='custom'&&/^\d+$/.test(customRaw)?Number(customRaw):null;await act(()=>api.addPlayer(name,tier,position,checkIn,gender,secondaryPosition,customMmr),`${name} added${checkIn?' and checked in':''}.`);}else if(form.id==='create-form'){const title=String(values.get('title')||'').trim(),date=String(values.get('date')||''),size=Number(values.get('size'));await act(()=>api.createEvent(title,date,size),'Session created. Check-in is open.');}else{if(!db){flash('Add your Supabase configuration first.',true);return;}try{const {data,error}=await db.auth.signInWithPassword({email:String(values.get('email')),password:String(values.get('password'))});if(error)throw error;user=data.user;await refresh();if(adminGranted)flash('Admin signed in.');}catch(e){flash(errText(e),true);}}});
   $('#demo-toggle')?.addEventListener('click',async ()=>{if(!adminGranted)return;if(demo)await setDemoMode(false);else await setDemoMode(true);});
@@ -895,28 +905,28 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       if(tab!=='courts')switchTab('courts');
       const target=btn.dataset.target;
       const allowed=['court-team-rosters','court-1-matches','court-2-matches','court-1-corrections','court-2-corrections','live-private-results','court-admin-session'];
-      if(!allowed.includes(target) || (['court-1-corrections','court-2-corrections','live-private-results','court-admin-session'].includes(target)&&!adminGranted))break;
+      if(!allowed.includes(target) || (['live-private-results','court-admin-session'].includes(target)&&!adminGranted))break;
       document.getElementById(target)?.scrollIntoView({behavior:'smooth',block:'start'});
       break;
     }
     case 'undo-score':{
-      if(!adminGranted||pub?.event?.status!=='locked')break;
+      if(pub?.event?.status!=='locked'||(!demo&&pub?.scoreActionsAvailable!==true))break;
       const court=Number(btn.dataset.court),last=[1,2].includes(court)?latestCompletedMatch(court):null;
       if(!last||last.id!==btn.dataset.match){flash('This is no longer the newest result on that court. Refresh and try again.',true);break;}
       const left=teamName(teamById(last.team_a_id)),right=teamName(teamById(last.team_b_id));
       const message=`UNDO COURT ${court} SCORE?\n\n${court===1?'🔵 BLUE COURT 1':'🔴 RED COURT 2'} · Match ${last.order}\n${left} ${last.score_a} – ${last.score_b} ${right}\n\nOnly Court ${court}'s latest score will be reversed. Court ${court===1?2:1} results remain saved.\n\nAffected players' MMR and win/loss records will be restored. An older result on this same court must be undone from newest to oldest.\n\nCancel = keep the score.`;
       if(!confirm(message))break;
-      await act(()=>api.undoCourt(pub.event.id,court,last.id),`Court ${court} · Match ${last.order} undone. The other court's scores remain unchanged. Re-enter the corrected score on Court ${court}.`);
+      if(!(await act(()=>api.undoCourt(pub.event.id,court,last.id),`Court ${court} · Match ${last.order} undone. The other court's scores remain unchanged. Re-enter the corrected score on Court ${court}.`)))await refresh(true);
       break;
     }
     case 'redo-score':{
-      if(!adminGranted||pub?.event?.status!=='locked')break;
+      if(pub?.event?.status!=='locked'||(!demo&&pub?.scoreActionsAvailable!==true))break;
       const court=Number(btn.dataset.court),redo=[1,2].includes(court)?availableRedo(court):null;
       if(!redo||redo.match_id!==btn.dataset.match){flash('This redo is no longer available. Refresh and try again.',true);break;}
       const left=teamName(teamById(redo.team_a_id)),right=teamName(teamById(redo.team_b_id));
       const message=`REDO COURT ${court} SCORE?\n\n${court===1?'🔵 BLUE COURT 1':'🔴 RED COURT 2'} · Match ${redo.order}\n${left} ${redo.score_a} – ${redo.score_b} ${right}\n\nThis restores the undone score and recalculates only the players on Court ${court}. Court ${court===1?2:1} remains untouched.\n\nCancel = leave the score undone.`;
       if(!confirm(message))break;
-      await act(()=>api.redoCourt(pub.event.id,court,redo.match_id),`Court ${court} · Match ${redo.order} restored. The other court remains unchanged.`);
+      if(!(await act(()=>api.redoCourt(pub.event.id,court,redo.match_id),`Court ${court} · Match ${redo.order} restored. The other court remains unchanged.`)))await refresh(true);
       break;
     }
     case 'rank-filter':{if(!adminGranted)break;const id=btn.dataset.rank;if(id!=='All'&&!RANK_TIERS.some(t=>t.id===id))break;leaderboardTier=id;$('#leaderboard-body').innerHTML=renderLeaderboard();break;}

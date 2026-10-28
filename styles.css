@@ -997,3 +997,10 @@ html[data-theme="dark"] .draft-stale{background:#4b3a26;color:#ffe4b4}
 .team-draft .draft-unlocked-note{background:#e6f2ff;border:1px solid #95b9dc;border-radius:8px;padding:10px 12px;color:#24486b}
 .team-draft .draft-unlocked-note button{margin-left:8px}
 html[data-theme="dark"] .team-draft .draft-unlocked-note{background:#17394f;border-color:#5486a3;color:#e1f1ff}
+
+/* V1.32 · Clear, touch-friendly public scoring on the community kiosk. */
+#view-courts .courts-community-notice{padding:13px 16px;margin:12px 0 15px;border:1px solid #b6d4ef;background:#eaf4ff;color:#19486f;border-radius:10px;font-size:13px;line-height:1.5}
+html[data-theme="dark"] #view-courts .courts-community-notice{background:#172b44;color:#deefff;border-color:#46719b}
+#view-courts .live-score-form .score-fields input{font-size:20px;min-height:51px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums}
+#view-courts .live-score-form button[type="submit"]{min-height:52px;font-size:15px}
+#view-courts .court-fix-button{touch-action:manipulation}
