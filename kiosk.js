@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.34';
+  const VERSION='1.35';
   const $=selector=>document.querySelector(selector);
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const config=window.VB_CONFIG||{};
@@ -68,11 +68,11 @@
     const undo=latestCompleted(court),redo=applicableRedo(court);
     const scorePossible=state.readyToScore&&state.data?.event?.status==='locked';
     return `<section class="kiosk-court kiosk-court-${court}" id="kiosk-court-${court}" aria-label="${courtName(court)}">
-      <header class="kiosk-court-head"><div><span class="court-eyebrow">${court===1?'● BLUE COURT':'● RED COURT'}</span><h2>Court ${court}</h2><p>${formatSize(court)} · ${teams.length} teams · ${completed}/${matches.length||3} matches finished</p></div><span class="court-progress">${completed===3?'COMPLETED':completed?'IN PROGRESS':'UP NEXT'}</span></header>
+      <header class="kiosk-court-head"><div><span class="court-eyebrow">${court===1?'● BLUE COURT':'● RED COURT'}</span><h2>Court ${court}</h2><p>${formatSize(court)} · ${teams.length} teams · ${completed}/${matches.length||0} matches finished</p></div><span class="court-progress">${matches.length&&completed===matches.length?'COMPLETED':completed?'IN PROGRESS':'UP NEXT'}</span></header>
       <div class="roster-heading"><strong>PLAYER ROSTERS</strong><small>Find your team below</small></div>
-      <div class="kiosk-teams">${teams.map(t=>renderTeam(t,court)).join('')}</div>
+      <div class="kiosk-teams ${teams.length===2?'two-team-layout':''}">${teams.map(t=>renderTeam(t,court)).join('')}</div>
       <div class="matches-heading"><strong>MATCHES & SCORING</strong><small>Play to ${Number(state.data?.event?.target_score)||25} · Win by 2</small></div>
-      <div class="kiosk-matches">${matches.map(renderMatch).join('')}</div>
+      <div class="kiosk-matches ${matches.length===2?'two-team-layout':''}">${matches.map(renderMatch).join('')}</div>
       ${scorePossible?`<div class="kiosk-corrections"><span>Score mistake?</span><button type="button" data-correction="undo" data-court="${court}" ${undo?'':'disabled'}>↶ Undo</button><button type="button" data-correction="redo" data-court="${court}" ${redo?'':'disabled'}>↷ Redo</button></div>`:''}
     </section>`;
   }
@@ -88,7 +88,7 @@
       b.classList.toggle('is-active',active);b.setAttribute('aria-pressed',String(active));
     });
     if(!e){root.innerHTML='<section class="kiosk-empty"><strong>No active session yet</strong><p>Team assignments will appear here when organizers open a session.</p></section>';renderSearch();return;}
-    if(!allTeams().length){root.innerHTML='<section class="kiosk-empty"><strong>Waiting for teams</strong><p>Once organizers publish a round, all six team rosters and court assignments will appear here automatically.</p></section>';renderSearch();return;}
+    if(!allTeams().length){root.innerHTML='<section class="kiosk-empty"><strong>Waiting for teams</strong><p>Once organizers publish a round, the team rosters and court assignments will appear here automatically.</p></section>';renderSearch();return;}
     root.innerHTML=`<div class="kiosk-courts ${state.filter==='all'?'show-both':'show-one'}">${[1,2].filter(c=>state.filter==='all'||state.filter===String(c)).map(renderCourt).join('')}</div>`;
     if(e.status==='locked'&&!state.readyToScore){root.insertAdjacentHTML('afterbegin','<p class="readonly-warning" role="alert">Scores are read-only. Public scoring requires the V1.32 Supabase migration. Ask an organizer for assistance.</p>');}
     renderSearch();
@@ -138,6 +138,7 @@
   }
   async function loadState(){
     const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;
+    if(data?.event){const counts=await db.rpc('vmm_get_court_team_counts',{p_event_id:data.event.id});if(counts.error)throw Error(`V1.35 database update required: ${counts.error.message}`);if(!counts.data||counts.data.event_id!==data.event.id)throw Error('Could not verify court settings.');data.event.court_1_team_count=counts.data.court_1_team_count;data.event.court_2_team_count=counts.data.court_2_team_count;data.event.capacity=counts.data.capacity;}
     let redo=[],ready=false;
     if(data?.event?.status==='locked'){
       const reply=await db.rpc('vmm_get_public_court_redo_state');

@@ -1013,3 +1013,7 @@ html[data-theme="dark"] #view-courts .courts-community-notice{background:#172b44
 .mixed-court-fields select{width:100%;min-width:0}
 .mixed-court-settings .subtle{margin:8px 0 12px}
 @media(max-width:460px){.mixed-court-settings{padding:12px}.mixed-court-fields{gap:8px}}
+
+/* V1.35: 2-team courts fill both columns rather than leaving a third blank. */
+#view-courts .teams-grid.two-team-layout,#view-courts .draft-teams.two-team-layout{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:420px){#view-courts .teams-grid.two-team-layout,#view-courts .draft-teams.two-team-layout{grid-template-columns:repeat(2,minmax(0,1fr))}}
