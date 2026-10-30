@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1728">
+  <meta name="description" content="RallyRank community volleyball kiosk: find your team, see your court, and enter final scores.">
+  <title>RallyRank · Community Kiosk</title>
+  <link rel="manifest" href="./kiosk.webmanifest">
+  <link rel="icon" type="image/png" href="./kiosk-icon.png">
+  <link rel="apple-touch-icon" href="./kiosk-icon.png">
+  <link rel="stylesheet" href="./kiosk.css?v=1.34">
+</head>
+<body>
+  <div class="kiosk-app">
+    <header class="kiosk-header">
+      <div class="kiosk-brand"><div class="kiosk-mark" aria-hidden="true">🏐</div><div><strong>RALLY<span>RANK</span></strong><small>COMMUNITY COURTS · KIOSK</small></div></div>
+      <div class="kiosk-header-actions">
+        <span class="connection" id="connection" role="status" aria-live="polite"><span class="status-dot"></span> Connecting</span>
+        <button type="button" id="refresh-button" class="header-button" aria-label="Refresh team and score information">↻ <span>Refresh</span></button>
+        <button type="button" id="fullscreen-button" class="header-button fullscreen-button">⛶ <span>Fullscreen</span></button>
+        <a class="header-button leave-button" href="./index.html#courts">✕ <span>Exit kiosk</span></a>
+      </div>
+    </header>
+    <section class="kiosk-toolbar" aria-label="Session and player lookup">
+      <div class="session-title"><strong id="session-name">Loading courts…</strong><span id="session-subtitle">Looking for current team assignments</span></div>
+      <div class="kiosk-search"><label for="player-search">Find your court</label><div class="search-input-wrap"><span aria-hidden="true">⌕</span><input id="player-search" type="search" autocomplete="off" placeholder="Search player name…" aria-controls="search-results"></div><div id="search-results" class="search-results" aria-live="polite" hidden></div></div>
+      <div class="court-filter" role="group" aria-label="Choose courts to display"><button class="filter-button is-active" data-filter="all" aria-pressed="true">Both</button><button class="filter-button court-one-filter" data-filter="1" aria-pressed="false">🔵 Court 1</button><button class="filter-button court-two-filter" data-filter="2" aria-pressed="false">🔴 Court 2</button></div>
+    </section>
+    <div id="notice" class="kiosk-notice" role="status" aria-live="polite" hidden></div>
+    <main id="kiosk-content" aria-live="off"><div class="kiosk-loading">Loading today’s teams and scores…</div></main>
+    <footer class="kiosk-footer"><span>Public score entry · No admin sign-in needed</span><span>V1.34 Kiosk</span></footer>
+  </div>
+  <div id="score-overlay" class="modal-overlay" hidden>
+    <section class="score-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+      <div class="score-dialog-top"><div><span id="modal-context" class="modal-context">COURT 1</span><h2 id="modal-heading">Enter final score</h2><p id="modal-rule">Play to 25 · Win by 2</p></div><button type="button" id="modal-close" class="modal-close" aria-label="Close score entry">✕</button></div>
+      <form id="kiosk-score-form" novalidate>
+        <div class="score-sides">
+          <div class="score-side"><label id="score-label-a" for="score-a">Team A</label><div class="score-number-control"><button type="button" class="adjust-button" data-adjust="a:-1" aria-label="Subtract one from first team">−</button><input id="score-a" name="score-a" inputmode="numeric" pattern="[0-9]*" type="number" min="0" max="99" placeholder="0" autocomplete="off" required><button type="button" class="adjust-button" data-adjust="a:1" aria-label="Add one to first team">+</button></div></div>
+          <span class="score-separator">–</span>
+          <div class="score-side"><label id="score-label-b" for="score-b">Team B</label><div class="score-number-control"><button type="button" class="adjust-button" data-adjust="b:-1" aria-label="Subtract one from second team">−</button><input id="score-b" name="score-b" inputmode="numeric" pattern="[0-9]*" type="number" min="0" max="99" placeholder="0" autocomplete="off" required><button type="button" class="adjust-button" data-adjust="b:1" aria-label="Add one to second team">+</button></div></div>
+        </div>
+        <p class="score-validation" id="score-validation" aria-live="polite">Enter both scores to confirm the winning team.</p>
+        <div class="modal-actions"><button type="button" id="cancel-score" class="cancel-button">Cancel</button><button type="submit" id="save-score" class="save-score-button" disabled>Save final score</button></div>
+      </form>
+    </section>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config.js?v=1.34"></script>
+  <script src="./matchmaking.js?v=1.34"></script>
+  <script src="./kiosk.js?v=1.34" defer></script>
+</body>
+</html>

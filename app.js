@@ -67,7 +67,7 @@
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.33';
+  const APP_VERSION='1.34';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -704,7 +704,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       ...(adminGranted?[['court-admin-session','⚙ Session settings','']]:[])
     ];
     const quickNav=shortcuts.length?`<nav class="court-quick-nav" aria-label="Live Courts shortcuts">${shortcuts.map(([target,label,cls])=>`<button type="button" class="${cls}" data-action="court-jump" data-target="${target}">${label}</button>`).join('')}</nav>`:'';
-    const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">${hasTeams?'Blue Court 1 · Red Court 2. Teams first, results and corrections below.':'Get ready for matchday: confirm attendance and publish the teams.'}</p></div><div class="live-courts-actions"><button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>${quickNav}`;
+    const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">${hasTeams?'Blue Court 1 · Red Court 2. Teams first, results and corrections below.':'Get ready for matchday: confirm attendance and publish the teams.'}</p></div><div class="live-courts-actions"><a class="btn btn-small btn-primary" href="./kiosk.html" aria-label="Open fullscreen community kiosk">▣ Tablet kiosk</a><button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>${quickNav}`;
     // Ratings belong ONLY to Live Courts, never to the Admin tab. Keep this block after scores.
     const privateTools=adminGranted?`<div class="courts-admin-section" id="court-admin-tools">${renderPrivateMatchRatings()}${renderSessionManagement()}</div>`:'';
     if(!e)return `${title}<div class="empty"><strong>No active session</strong><p>Once check-in opens, the court schedule will show here.</p></div>${privateTools}`;
