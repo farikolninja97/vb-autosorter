@@ -72,7 +72,7 @@
   function challengerStatus(p){const played=matchesPlayed(p),remaining=Math.max(0,CHALLENGER_GAMES-played);return remaining?`${remaining} ${remaining===1?'match':'matches'} until Challenger eligibility`:`Challenger eligible (${played} matches)`;}
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.35';
+  const APP_VERSION='1.36';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -102,7 +102,7 @@
     return JSON.stringify({session:pub.event.id,round:pub.event.round_number,status:pub.event.status,
       size:pub.event.team_size,size2:courtSizeFor(pub.event,2),counts:[courtCountFor(pub.event,1),courtCountFor(pub.event,2)],mode:pub.event.court_mode,gender:admin.gender_balance===true,
       positions:admin.position_balance===true,history:admin.previous_teams||[],
-      selected:roster.map(r=>{const p=byId.get(r.id);return [r.id,r.checked_at,r.rounds_played,p?.mmr,p?.position,p?.secondary_position,p?.gender];})});
+      selected:roster.map(r=>{const p=byId.get(r.id);return [r.id,r.checked_at,r.rounds_played,p?.name,p?.mmr,p?.position,p?.secondary_position,p?.gender];})});
   }
   function currentDraft(){
     if(!pendingTeams)return null;
@@ -265,6 +265,24 @@
       if(demoData.signups.length>=96)throw Error('Signup limit reached.');
       demoData.signups.push({player_id:pid,checked_at:new Date().toISOString()});
     });const {error}=await db.rpc('vmm_admin_check_in_player',{p_player_id:pid});if(error)throw error;},
+    // Names are separate from other profile settings: never rewrite an ID, rating or match.
+    async renamePlayer(pid,newName){
+      const clean=String(newName??'').trim().replace(/\s+/g,' ');
+      if(clean.length<2||clean.length>45||!/[a-z0-9]/i.test(clean))
+        throw Error('Player name must be 2–45 characters and contain a letter or number.');
+      if(demo)return demoAction(()=>{
+        const p=demoData.players.find(p=>p.id===pid);
+        if(!p)throw Error('Player not found.');
+        if(demoData.players.some(other=>other.id!==pid&&other.name.toLocaleLowerCase()===clean.toLocaleLowerCase()))
+          throw Error('That player name is already in use.');
+        p.name=clean;
+        for(const team of demoData.teams||[])for(const member of team.players||[])if(member.id===pid)member.name=clean;
+        for(const archived of demoData.archives||[])for(const team of archived.teams||[])
+          for(const member of team.players||[])if(member.id===pid)member.name=clean;
+      });
+      const {error}=await db.rpc('vmm_admin_rename_player',{p_player_id:pid,p_new_name:clean});
+      if(error)throw error;
+    },
     async updatePlayer(pid,mmr,position,gender='Unspecified',secondaryPosition='Unspecified'){if(demo)return demoAction(()=>{
       const p=demoData.players.find(p=>p.id===pid);if(!p)throw Error('Player not found.');
       if(!POSITIONS.includes(position)||!POSITIONS.includes(secondaryPosition)||!GENDERS.includes(gender)||!Number.isInteger(mmr)||mmr<500||mmr>2500)throw Error('Invalid rating or preferred position.');
@@ -789,6 +807,22 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     if(option && !option.disabled)input.setAttribute('aria-activedescendant',option.id);
     else input.removeAttribute('aria-activedescendant');
   }
+  // Private, live attendance totals. Count only a checked-in player's PRIMARY
+  // position; secondary/Flex preferences must not double-count a participant.
+  function renderCheckedInPositionCounts(){
+    const profiles=new Map((admin?.players||[]).map(player=>[player.id,player]));
+    const counts=new Map(POSITIONS.map(position=>[position,0]));
+    for(const attendee of pub?.roster||[]){
+      const position=normalizePosition(profiles.get(attendee.id)?.position);
+      counts.set(position,counts.get(position)+1);
+    }
+    const names={'Unspecified':'Unspecified','Setter':'Setter','Outside Hitter':'Outside','Opposite':'Opposite','Middle Blocker':'Middle','Libero':'Libero','Flex':'Flex'};
+    const labels={'Unspecified':'Not specified','Setter':'Setter','Outside Hitter':'Outside Hitter','Opposite':'Opposite','Middle Blocker':'Middle Blocker','Libero':'Libero','Flex':'Flex'};
+    return `<section class="attendance-position-summary" aria-label="Checked-in players by primary position" aria-live="polite">
+      <div class="attendance-position-summary-head"><strong>Positions here</strong><small>Primary position only · ${pub?.roster?.length||0} total</small></div>
+      <div class="attendance-position-chips">${POSITIONS.map(position=>`<span class="attendance-position-chip" title="${safe(labels[position])}: ${counts.get(position)} checked in" aria-label="${safe(labels[position])}: ${counts.get(position)} checked in"><span>${safe(names[position])}</span><b>${counts.get(position)}</b></span>`).join('')}</div>
+    </section>`;
+  }
   function renderAttendance(){
     const e=pub?.event;
     if(!e)return '';
@@ -798,6 +832,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     return `<section class="panel admin-attendance" id="admin-attendance"><div class="panel-head"><h3>✓ Who showed up?</h3>${statusPill(editable?'Taking attendance':'Attendance locked',editable?'win':'muted')}</div>
       <p class="subtle">Check in players from your saved profiles. Only checked-in players are eligible for the next set of balanced teams.</p>
       <div class="attendance-stats"><div><strong>${checked.length}</strong><span>Here today</span></div><div><strong>${Math.max(0,all.length-checked.length)}</strong><span>Not checked in</span></div><div><strong>${Math.max(0,e.capacity-checked.length)}</strong><span>Open team spots</span></div></div>
+      ${renderCheckedInPositionCounts()}
       ${editable?`<div class="attendance-find"><label class="label-input" for="attendance-search">Find a player to check in</label><div class="attendance-search-wrap"><span class="attendance-search-icon" aria-hidden="true">⌕</span><input id="attendance-search" type="search" class="field" placeholder="Type any part of a name…" value="${safe(attendanceSearch)}" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen&&attendanceSearch.trim())}" role="combobox" aria-label="Find registered player" /><div class="attendance-results" id="attendance-results" role="listbox" aria-label="Matching player profiles" ${attendanceDropdownOpen&&attendanceSearch.trim()?'':'hidden'}>${attendanceSuggestions()}</div></div><p class="attendance-search-hint">Matches appear as you type. Tap <strong>＋ Check in</strong> or use ↓ and Enter.</p></div>`:'<div class="hint">Teams are currently playing. Attendance changes reopen after this round ends.</div>'}
       <div class="attendance-list-head"><div><h4>Checked-in players</h4><span class="small-caps">${here.length} of ${all.length} profiles</span></div>${editable?'<span class="attendance-hint">Tap Remove if someone leaves</span>':''}</div>
       <div class="attendance-checked-list">${checkedList}</div>
@@ -852,7 +887,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const cannotDelete=hasHistory||locked;
       const deleteTip=hasHistory?'Cannot delete: recorded matches must be preserved.':locked?'Cannot delete while assigned to an active round.':'Permanently remove profile and its saved MMR.';
       return `<div class="player-edit" data-name="${safe(p.name.toLowerCase())}"><div class="player-edit-info"><div class="player-edit-name">${safe(p.name)} ${checked?statusPill('Checked in','win'):''}</div><div class="player-edit-record">${p.wins}W / ${p.losses}L · ${safe(p.position||'Unspecified')}${p.secondary_position&&p.secondary_position!=='Unspecified'?` · Secondary: ${safe(p.secondary_position)}`:''}</div><div class="placement-progress"><span class="placement-status ${placementLeft(p)?'is-placing':'is-placed'}">${safe(placementStatus(p))}</span><span class="placement-eligibility">${safe(challengerStatus(p))}</span></div></div>
-        <div class="profile-controls"><div class="profile-selects"><label>Preferred position<select class="profile-position field" aria-label="Position for ${safe(p.name)}">${positionOptions(p.position||'Unspecified')}</select></label><label>Secondary position (Flex = any role)<select class="profile-secondary-position field" aria-label="Secondary position for ${safe(p.name)}">${positionOptions(p.secondary_position||'Unspecified')}</select></label><label>Skill preset<select class="tier-preset field" aria-label="Skill preset for ${safe(p.name)}" ${locked?'disabled':''}><option value="">Keep rating</option><option value="1000">Beginner</option><option value="1200">Intermediate</option><option value="1500">Advanced</option></select></label><label>Gender (admin only)<select class="profile-gender field" aria-label="Gender for ${safe(p.name)}">${genderOptions(p.gender||'Unspecified')}</select></label><label>Edit MMR<input class="profile-mmr field" aria-label="Edit MMR for ${safe(p.name)}" type="number" min="500" max="2500" step="1" value="${p.mmr}" ${locked?'disabled':''}/></label></div>
+        <div class="profile-controls"><details class="profile-name-editor"><summary>✎ Edit player name</summary><div class="profile-name-editor-body"><label class="profile-name-label">Player name<input class="profile-name-input field" type="text" aria-label="New name for ${safe(p.name)}" autocomplete="off" minlength="2" maxlength="45" value="${safe(p.name)}" /></label><button type="button" class="btn btn-small btn-secondary profile-rename-save" data-action="rename-player" data-player="${safe(p.id)}">Save name</button></div><p class="profile-rename-hint">Name changes keep this player's ratings, match history and check-in. You can rename players during live rounds.</p></details><div class="profile-selects"><label>Preferred position<select class="profile-position field" aria-label="Position for ${safe(p.name)}">${positionOptions(p.position||'Unspecified')}</select></label><label>Secondary position (Flex = any role)<select class="profile-secondary-position field" aria-label="Secondary position for ${safe(p.name)}">${positionOptions(p.secondary_position||'Unspecified')}</select></label><label>Skill preset<select class="tier-preset field" aria-label="Skill preset for ${safe(p.name)}" ${locked?'disabled':''}><option value="">Keep rating</option><option value="1000">Beginner</option><option value="1200">Intermediate</option><option value="1500">Advanced</option></select></label><label>Gender (admin only)<select class="profile-gender field" aria-label="Gender for ${safe(p.name)}">${genderOptions(p.gender||'Unspecified')}</select></label><label>Edit MMR<input class="profile-mmr field" aria-label="Edit MMR for ${safe(p.name)}" type="number" min="500" max="2500" step="1" value="${p.mmr}" ${locked?'disabled':''}/></label></div>
         <div class="button-row profile-action-row"><button type="button" class="btn btn-small btn-primary save-profile" data-action="save-profile" data-player="${safe(p.id)}">Save player profile</button>${e?.status==='open'?(checked?`<button type="button" class="btn btn-small btn-secondary" data-action="remove-signup" data-player="${safe(p.id)}">Remove check-in</button>`:`<button type="button" class="btn btn-small btn-secondary" data-action="checkin-player" data-player="${safe(p.id)}">＋ Check in</button>`):''}<button type="button" class="btn btn-small btn-danger profile-delete" data-action="delete-player" data-player="${safe(p.id)}" aria-label="Permanently delete ${safe(p.name)}" title="${safe(deleteTip)}" ${cannotDelete?'disabled':''}>Delete player</button></div>${hasHistory?'<p class="profile-delete-note">Deletion disabled: this player has recorded matches. MMR can still be edited.</p>':locked?'<p class="profile-delete-note">Deletion disabled while assigned to an active round.</p>':'<p class="profile-delete-note">Deleting a player permanently removes their profile and saved MMR. Check-in removal above keeps their MMR.</p>'}</div></div>`;
     }).join('');
     const count=matching.length;
@@ -1012,6 +1047,26 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       break;
     }
     case 'court-mode':{if(!adminGranted||pub?.event?.status!=='open')break;const mode=btn.dataset.mode;if(!['mixed','split'].includes(mode))break;await act(()=>api.setCourtMode(pub.event.id,mode),mode==='mixed'?'Balanced mixed courts selected.':'Competitive / beginner courts selected.');break;}
+    case 'rename-player':{
+      if(!adminGranted||!admin?.players)break;
+      const pid=btn.dataset.player;
+      const card=btn.closest('.player-edit');
+      const field=card?.querySelector('.profile-name-input');
+      const player=admin.players.find(p=>p.id===pid);
+      if(!field||!player)break;
+      const clean=field.value.trim().replace(/\s+/g,' ');
+      if(clean.length<2||clean.length>45||!/[a-z0-9]/i.test(clean)){
+        flash('Name must contain a letter or number and be 2–45 characters long.',true);
+        field.focus();break;
+      }
+      if(clean===player.name){flash('This player already has that name.');break;}
+      if(admin.players.some(p=>p.id!==pid&&p.name.toLocaleLowerCase()===clean.toLocaleLowerCase())){
+        flash('That player name is already in use.',true);field.focus();break;
+      }
+      const saved=await act(()=>api.renamePlayer(pid,clean),`Name updated: ${player.name} → ${clean}. MMR and history preserved.`);
+      if(saved){searchText=clean;showAllProfiles=false;discardDraft();draftStale=true;$('#admin-body').innerHTML=renderAdmin();}
+      break;
+    }
     case 'save-profile':{const pid=btn.dataset.player;const card=btn.closest('.player-edit');const mmr=Number(card.querySelector('.profile-mmr').value);const position=card.querySelector('.profile-position').value;const gender=card.querySelector('.profile-gender').value;const secondaryPosition=card.querySelector('.profile-secondary-position').value;if(!POSITIONS.includes(secondaryPosition)||!GENDERS.includes(gender)||!Number.isInteger(mmr)||mmr<500||mmr>2500||!POSITIONS.includes(position)){flash('Choose a valid position and MMR between 500 and 2500.',true);return;}await act(()=>api.updatePlayer(pid,mmr,position,gender,secondaryPosition),'Player profile saved.');break;}
     case 'delete-player':{
       if(!adminGranted||!admin?.players)break;

@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.35';
+  const VERSION='1.36';
   const $=selector=>document.querySelector(selector);
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const config=window.VB_CONFIG||{};
