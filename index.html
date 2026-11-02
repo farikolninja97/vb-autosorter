@@ -11,12 +11,12 @@
   <link rel="icon" type="image/svg+xml" href="https://cosvolleyball.github.io/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="https://cosvolleyball.github.io/favicon-32.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="https://cosvolleyball.github.io/apple-touch-icon.png" />
-  <link rel="stylesheet" href="./styles.css?v=1.36" />
-  <link rel="stylesheet" href="./cos-theme.css?v=1.36" />
+  <link rel="stylesheet" href="./styles.css?v=1.37" />
+  <link rel="stylesheet" href="./cos-theme.css?v=1.37" />
 </head>
 <body>
   <div class="page-shell">
-    <div class="utility-bar"><span><span class="utility-ball">●</span> THE COMMUNITY VOLLEYBALL MATCHDAY HUB</span><span class="utility-right">2 COURTS <span class="utility-sep">/</span> 4–6 TEAMS <span class="utility-sep">/</span> ALL LEVELS</span></div>
+    <div class="utility-bar"><span><span class="utility-ball">●</span> THE COMMUNITY VOLLEYBALL MATCHDAY HUB</span><span class="utility-right">2 COURTS <span class="utility-sep">/</span> <span id="utility-team-count">6</span> TEAMS <span class="utility-sep">/</span> ALL LEVELS</span></div>
     <header class="site-header">
       <a class="brand" href="#courts" aria-label="RallyRank home">
         <span class="brand-icon" aria-hidden="true">
@@ -48,7 +48,7 @@
           <h1 id="hero-title">Everybody plays.<br /><em>Every point counts.</em></h1>
           <p id="hero-description">Follow teams and scores across both courts. Administrators manage attendance, rankings, and matchday settings.</p>
           <div class="hero-facts" aria-label="Session format">
-            <span><strong>02</strong> COURTS</span><span><strong>4–6</strong> TEAMS</span><span><strong>02</strong> GAMES / TEAM</span>
+            <span><strong>02</strong> COURTS</span><span><strong id="hero-team-count">06</strong> TEAMS</span><span><strong>02</strong> GAMES / TEAM</span>
           </div>
         </div>
         <div class="hero-symbol" aria-hidden="true">
@@ -90,11 +90,12 @@
         <div id="admin-body"></div>
       </section>
     </main>
-    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> MADE FOR THE COURT</span><span>V1.36</span></footer>
+    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> MADE FOR THE COURT</span><span>V1.37</span></footer>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="./config.js?v=1.36"></script>
-  <script src="./matchmaking.js?v=1.36"></script>
-  <script src="./app.js?v=1.36" defer></script>
+  <script src="./config.js?v=1.37"></script>
+  <script src="./matchmaking.js?v=1.37"></script>
+  <script src="./team-names.js?v=1.37"></script>
+  <script src="./app.js?v=1.37" defer></script>
 </body>
 </html>

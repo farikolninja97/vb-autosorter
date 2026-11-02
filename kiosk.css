@@ -14,3 +14,6 @@
 /* V1.35: balanced columns for two-team court rosters and two-match schedules. */
 .kiosk-teams.two-team-layout,.kiosk-matches.two-team-layout{grid-template-columns:repeat(2,minmax(0,1fr))}
 @media(max-width:540px){.kiosk-matches.two-team-layout{grid-template-columns:1fr}}
+
+/* V1.37 — wrap optional funny team names in compact kiosk cards. */
+.kiosk-team h3,.kiosk-match-result .match-team{overflow-wrap:anywhere;white-space:normal}

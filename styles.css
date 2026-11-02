@@ -1048,3 +1048,6 @@ html[data-brand="cos"] .attendance-position-chip b{background:#d8f1f3;color:#046
 html[data-brand="cos"][data-theme="dark"] .attendance-position-chip{border-color:#406774;background:#143746;color:#daf4f7}
 html[data-brand="cos"][data-theme="dark"] .attendance-position-chip b{background:#215466;color:#c7faff}
 @media(max-width:460px){.attendance-position-chips{gap:5px}.attendance-position-chip{font-size:10px;padding:4px 6px;min-height:27px}.attendance-position-chip b{font-size:11px;min-width:19px}}
+
+/* V1.37 — long optional funny team names remain readable on phones. */
+.team-title,.draft-team-heading strong{overflow-wrap:anywhere;white-space:normal;line-height:1.2}

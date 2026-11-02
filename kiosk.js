@@ -1,13 +1,13 @@
 (() => {
   'use strict';
-  const VERSION='1.36';
+  const VERSION='1.37';
   const $=selector=>document.querySelector(selector);
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const config=window.VB_CONFIG||{};
   const db=config.supabaseUrl&&config.supabaseAnonKey&&window.supabase?.createClient(config.supabaseUrl,config.supabaseAnonKey)||null;
   const state={data:null,filter:'all',search:'',loading:false,refreshQueued:false,busy:false,modal:null,readyToScore:false,channel:null,wakeLock:null};
   let toastTimer=null,refreshTimer=null;
-  const moneylessTeamName=team=>team?`Team ${team.number}`:'TBD';
+  const moneylessTeamName=team=>window.RallyTeamNames.label(team,state.data?.event?.team_naming_mode);
   const courtName=c=>`Court ${c}`;
   const allTeams=()=>state.data?.teams||[];
   const allMatches=()=>state.data?.matches||[];
@@ -99,7 +99,7 @@
     if(!query){root.hidden=true;root.innerHTML='';return;}
     const hits=allTeams().flatMap(t=>(t.players||[]).filter(p=>!p.is_placeholder&&String(p.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase().includes(query)).map(p=>({name:p.name,court:t.court,team:t.number,id:t.id}))).slice(0,12);
     root.hidden=false;
-    root.innerHTML=hits.length?hits.map(h=>`<button type="button" data-find-team="${escapeHtml(h.id)}" data-find-court="${Number(h.court)}"><strong>${escapeHtml(h.name)}</strong><span class="search-court-${Number(h.court)}">${courtName(h.court)} · Team ${Number(h.team)}</span></button>`).join(''):'<span class="no-search-results">No matching player in the published teams.</span>';
+    root.innerHTML=hits.length?hits.map(h=>`<button type="button" data-find-team="${escapeHtml(h.id)}" data-find-court="${Number(h.court)}"><strong>${escapeHtml(h.name)}</strong><span class="search-court-${Number(h.court)}">${courtName(h.court)} · ${escapeHtml(moneylessTeamName(teamById(h.id)))}</span></button>`).join(''):'<span class="no-search-results">No matching player in the published teams.</span>';
   }
   function verifyScore(a,b){
     if(!/^\d+$/.test(a)||!/^\d+$/.test(b))throw Error('Enter both scores.');
@@ -138,7 +138,7 @@
   }
   async function loadState(){
     const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;
-    if(data?.event){const counts=await db.rpc('vmm_get_court_team_counts',{p_event_id:data.event.id});if(counts.error)throw Error(`V1.35 database update required: ${counts.error.message}`);if(!counts.data||counts.data.event_id!==data.event.id)throw Error('Could not verify court settings.');data.event.court_1_team_count=counts.data.court_1_team_count;data.event.court_2_team_count=counts.data.court_2_team_count;data.event.capacity=counts.data.capacity;}
+    if(data?.event){const counts=await db.rpc('vmm_get_court_team_counts',{p_event_id:data.event.id});if(counts.error)throw Error(`V1.35 database update required: ${counts.error.message}`);if(!counts.data||counts.data.event_id!==data.event.id)throw Error('Could not verify court settings.');data.event.court_1_team_count=counts.data.court_1_team_count;data.event.court_2_team_count=counts.data.court_2_team_count;if(!['numbers','funny'].includes(counts.data.team_naming_mode))throw Error('RallyRank V1.37 SQL migration required for team names.');data.event.team_naming_mode=counts.data.team_naming_mode;data.event.capacity=counts.data.capacity;}
     let redo=[],ready=false;
     if(data?.event?.status==='locked'){
       const reply=await db.rpc('vmm_get_public_court_redo_state');
