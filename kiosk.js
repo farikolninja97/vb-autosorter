@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.37';
+  const VERSION='1.39';
   const $=selector=>document.querySelector(selector);
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const config=window.VB_CONFIG||{};
@@ -9,6 +9,7 @@
   let toastTimer=null,refreshTimer=null;
   const moneylessTeamName=team=>window.RallyTeamNames.label(team,state.data?.event?.team_naming_mode);
   const courtName=c=>`Court ${c}`;
+  const assignedRoleLabel=role=>role==='Middle Blocker'?'Middle Blocker · front row':role==='Libero'?'Libero · back row':role;
   const allTeams=()=>state.data?.teams||[];
   const allMatches=()=>state.data?.matches||[];
   const teamById=id=>allTeams().find(t=>t.id===id)||null;
@@ -58,7 +59,7 @@
   function renderTeam(team,court){
     return `<section class="kiosk-team" data-team-id="${escapeHtml(team.id)}" aria-label="${courtName(court)} ${moneylessTeamName(team)}">
       <h3>${escapeHtml(moneylessTeamName(team))}</h3>
-      <ol class="roster-list">${(team.players||[]).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${player.assigned_position?`<small>${escapeHtml(player.assigned_position)}</small>`:''}</li>`).join('')}</ol>
+      <ol class="roster-list">${(team.players||[]).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${player.assigned_position?`<small>${escapeHtml(assignedRoleLabel(player.assigned_position))}</small>`:''}</li>`).join('')}</ol>
     </section>`;
   }
   function renderCourt(court){

@@ -1074,3 +1074,11 @@ html[data-brand="cos"][data-theme="dark"] .attendance-position-chip b{background
 .checkin-launch-actions>.btn:first-child{flex:1 1 180px}
 .checkin-launch>.subtle{margin:8px 0 0}
 @media(max-width:570px){.session-quick-fields{grid-template-columns:1fr}.session-advanced-settings>summary{align-items:flex-start;flex-direction:column}.session-advanced-settings>summary span{text-align:left;margin-left:24px}.checkin-launch-actions>.btn{flex:1 1 100%;min-width:0}}
+
+/* RallyRank V1.39: Admin-only, icon-only warnings for missing PRIMARY Setter/Middle. */
+.role-gap-icons{display:inline-flex;gap:4px;vertical-align:middle;align-items:center;margin-left:7px;line-height:1}
+.role-gap-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;font-family:system-ui,'Apple Color Emoji','Segoe UI Emoji',sans-serif;font-size:16px;font-weight:normal;line-height:1.15;cursor:help;min-width:20px;min-height:20px;border-radius:5px}
+.role-gap-setter{background:rgba(246,156,39,.15)}
+.role-gap-middle{background:rgba(125,76,194,.12)}
+.draft-team-heading .role-gap-icons{margin-right:auto}
+@media(max-width:480px){.role-gap-icons{gap:2px;margin-left:4px}.role-gap-icon{font-size:15px;min-width:18px;min-height:18px}}

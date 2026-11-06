@@ -1,4 +1,4 @@
-/* RallyRank V1.33 — MMR-first balance, optional gender and primary/secondary position distribution. */
+/* RallyRank V1.39 — 6v6 house-rule role template: dedicated front Middle and back Libero. */
 (function(root){
   'use strict';
   const DEFAULT_COURT_COUNTS=[3,3];
@@ -82,6 +82,17 @@
         const amounts=block.map(i=>teams[i].reduce((sum,p)=>sum+positionCoverage(p,role),0));
         const average=amounts.reduce((sum,n)=>sum+n,0)/amounts.length;
         cost+=weight*emphasis*amounts.reduce((sum,n)=>sum+(n-average)**2,0);
+      }
+    }
+    // RallyRank house rules: all six players remain on court, with a dedicated
+    // front-row Middle and back-row Libero (no standard MB/Libero substitution).
+    // Prefer a specialist for both roles when position balancing is enabled.
+    // This is a *soft* preference: never reject an otherwise playable team.
+    for(const team of teams){
+      if(team.length!==6)continue;
+      for(const role of ['middle','defense']){
+        const best=Math.max(0,...team.map(p=>positionCoverage(p,role)));
+        cost+=15000*(1-best)**2;
       }
     }
     return cost;
@@ -218,19 +229,28 @@
       }
       if(current<bestScore){bestScore=current;best=teams.map(t=>[...t]);}
     }
-    return balancePositions?best.map(assignTeamPositions):best;
+    // Every 6v6 roster receives house-rule role assignments, even if the
+    // organizer has disabled the *team distribution* position-balance toggle.
+    // Smaller court formats retain their previous opt-in behavior.
+    return best.map(team=>(balancePositions||team.length===6)?assignTeamPositions(team):team);
   }
   // Assign specific court roles AFTER balancing team ratings. Flex is never
   // displayed as an assignment: it means the player can cover any real role.
   function assignTeamPositions(team){
     if(!Array.isArray(team)||team.length<2||team.length>6)throw Error('A team must have 2–6 spots.');
-    const roles=['Setter','Outside Hitter','Outside Hitter','Middle Blocker','Middle Blocker','Opposite'].slice(0,team.length);
-    const liberoCandidates=team.filter(p=>!isPlaceholder(p)&&[p.position||p.primary_position,p.secondary_position].includes('Libero'));
-    if(liberoCandidates.length&&team.length>=4){
-      // Include a Libero only if someone actually prefers it. Flex can cover
-      // that slot if necessary, but won't cause a Libero slot by itself.
-      const idx=roles.lastIndexOf('Middle Blocker');
-      if(idx>=0)roles[idx]='Libero';
+    // Six *different* players: 1 Setter, 2 Outsides, 1 Opposite, 1 Middle,
+    // 1 Libero. Middle stays front row and Libero stays back row under the
+    // organizer's house rules: this is NOT a seven-person substitution model.
+    const roles=team.length===6
+      ? ['Setter','Outside Hitter','Outside Hitter','Opposite','Middle Blocker','Libero']
+      : ['Setter','Outside Hitter','Outside Hitter','Middle Blocker','Middle Blocker','Opposite'].slice(0,team.length);
+    if(team.length<6){
+      // Preserve V1.38's historical role behavior for smaller court formats.
+      const liberoCandidates=team.filter(p=>!isPlaceholder(p)&&[p.position||p.primary_position,p.secondary_position].includes('Libero'));
+      if(liberoCandidates.length&&team.length>=4){
+        const idx=roles.lastIndexOf('Middle Blocker');
+        if(idx>=0)roles[idx]='Libero';
+      }
     }
     function fit(player,role){
       if(isPlaceholder(player))return 0;
@@ -262,7 +282,19 @@
     dfs(0,0,[]);
     return team.map((p,i)=>({...p,assigned_position:roles[bestSlots[i]]}));
   }
-  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,K_FACTOR};
+  // Admin-only compact indicators. A dedicated specialist must have this
+  // role as their PRIMARY preference, not merely as a secondary or Flex role.
+  // No warning is generated for Libero or for smaller non-6v6 team formats.
+  // This does not change matchmaking or disqualify available stand-ins.
+  function teamRoleWarnings(team){
+    if(!Array.isArray(team)||team.length!==6)return [];
+    const hasPrimary=role=>team.some(p=>!isPlaceholder(p)&&(p.position||p.primary_position)===role);
+    return [
+      ...(!hasPrimary('Setter')?['Setter']:[]),
+      ...(!hasPrimary('Middle Blocker')?['Middle Blocker']:[])
+    ];
+  }
+  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,teamRoleWarnings,K_FACTOR};
   root.RallyMath=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);
