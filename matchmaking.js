@@ -1,4 +1,4 @@
-/* RallyRank V1.40 — 6v6 house-rule role template: dedicated front Middle and back Libero. */
+/* RallyRank V1.41 — Outside-to-Middle fallback and session-level preference fairness. */
 (function(root){
   'use strict';
   const DEFAULT_COURT_COUNTS=[3,3];
@@ -72,6 +72,31 @@
     const second=Array.from({length:counts[1]},(_,i)=>counts[0]+i);
     return [first,second];
   }
+  // Prior completed rounds only. Stored in a private, admin-only DB history so
+  // preference coverage survives page refreshes and new team generations.
+  // Flex/Unspecified do not specify a single primary playing role.
+  const SIX_ROLES={'Setter':1,'Outside Hitter':2,'Opposite':1,'Middle Blocker':1,'Libero':1};
+  const recognizedPrimary=p=>{
+    const primary=p.position||p.primary_position||'Unspecified';
+    return Object.hasOwn(SIX_ROLES,primary)?primary:null;
+  };
+  const historyOf=(history,id)=>Array.isArray(history?.[id])?history[id]:[];
+  const needsPrimary=(p,history)=>!isPlaceholder(p)&&Boolean(recognizedPrimary(p))&&!historyOf(history,p.id).includes(recognizedPrimary(p));
+  function rolePriorityCost(teams,history){
+    // Spread unserved primary-position players across the available role slots.
+    // This is an inexpensive approximation in the tight team-swap loop; final
+    // assignments use a full one-player-per-role matching below.
+    let cost=0;
+    for(const team of teams){
+      if(team.length!==6)continue;
+      for(const [role,slots] of Object.entries(SIX_ROLES)){
+        const waiting=team.filter(p=>needsPrimary(p,history)&&recognizedPrimary(p)===role&&
+          (role!=='Middle Blocker'||canPlayMiddle(p))).length;
+        cost+=Math.max(0,waiting-slots)*32000;
+      }
+    }
+    return cost;
+  }
   function positionBalanceCost(teams,mode,teamSize,counts=DEFAULT_COURT_COUNTS){
     const all=Array.from({length:teams.length},(_,i)=>i);
     const blocks=mode==='split'?courtBlocks(counts):[all];
@@ -99,7 +124,7 @@
     }
     return cost;
   }
-  function score(teams,priorPairs,teamSize,mode,balanceWomen=false,balancePositions=false,counts=DEFAULT_COURT_COUNTS,ignoreMmr=false){
+  function score(teams,priorPairs,teamSize,mode,balanceWomen=false,balancePositions=false,counts=DEFAULT_COURT_COUNTS,ignoreMmr=false,roleHistory={}){
     const all=Array.from({length:teams.length},(_,i)=>i);
     const blocks=mode==='split'?courtBlocks(counts):[all];
     let ratingCost=0;
@@ -147,7 +172,7 @@
         ratingCost+=(c1-c2)**2*24000;
       }
     }
-    if(balancePositions)ratingCost+=positionBalanceCost(teams,mode,teamSize,counts);
+    if(balancePositions){ratingCost+=positionBalanceCost(teams,mode,teamSize,counts);ratingCost+=rolePriorityCost(teams,roleHistory);}
     // The Middle restriction is applied only when assigning roles. When
     // position balancing is OFF, teams have no assigned roles at all.
     return ratingCost+repeats;
@@ -164,6 +189,7 @@
     const ignoreMmr=options?.ignoreMmr===true;
     const balanceWomen=options?.balanceWomen===true;
     const balancePositions=options?.balancePositions===true;
+    const roleHistory=options?.roleHistory||{};
     const capacity=teamSizes.reduce((sum,n)=>sum+n,0);
     if(players.length<teamCount)throw Error(`At least ${teamCount} real players are needed (one per team).`);
     const selected=players.slice(0,capacity);
@@ -225,7 +251,7 @@
        const order=first.flatMap((index,i)=>[index,second[i]] .filter(v=>v!==undefined)).concat(second.slice(first.length));
        assign(sorted,order);
       }
-      let current=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts,ignoreMmr);
+      let current=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts,ignoreMmr,roleHistory);
       for(let n=0;n<450;n++){
         const a=Math.floor(Math.random()*teamCount),b=Math.floor(Math.random()*teamCount);
         if(a===b||(mode==='split'&&(a<courtCounts[0])!==(b<courtCounts[0])))continue;
@@ -233,7 +259,7 @@
         const bReal=teams[b].map((p,i)=>!isPlaceholder(p)?i:-1).filter(i=>i>=0);
         const ia=aReal[Math.floor(Math.random()*aReal.length)],ib=bReal[Math.floor(Math.random()*bReal.length)];
         [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
-        const next=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts,ignoreMmr);
+        const next=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts,ignoreMmr,roleHistory);
         if(next<current){current=next;}
         else [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
       }
@@ -241,7 +267,7 @@
     }
     // Do not assign or display positions when the admin disables the
     // position-balancing option, including in 6v6 games.
-    return balancePositions?best.map(assignTeamPositions):best;
+    return balancePositions?best.map(team=>assignTeamPositions(team,roleHistory)):best;
   }
   // Assign specific court roles AFTER balancing team ratings. Flex is never
   // displayed as an assignment: it means the player can cover any real role.
@@ -249,7 +275,7 @@
     if(isPlaceholder(player))return true; // A substitute slot can be filled by a Middle specialist later.
     return player.gender!=='Woman' || [player.position||player.primary_position,player.secondary_position].includes('Middle Blocker');
   }
-  function assignTeamPositions(team){
+  function assignTeamPositions(team,roleHistory={}){
     if(!Array.isArray(team)||team.length<2||team.length>6)throw Error('A team must have 2–6 spots.');
     // Six *different* players: 1 Setter, 2 Outsides, 1 Opposite, 1 Middle,
     // 1 Libero. Middle stays front row and Libero stays back row under the
@@ -272,14 +298,27 @@
       if(role==='Middle Blocker'&&!canPlayMiddle(player))return -100000;
       function affinity(position){
         if(position===role)return 100;
-        if(position==='Flex')return 70; // May play ANY role; below exact primary.
+        // For your house-rule Middle shortage, prefer an eligible Outside
+        // before general Flex. Flex can still cover Middle when no Outside
+        // is available, and keeps its usual priority at other positions.
+        if(position==='Flex')return role==='Middle Blocker'?5:70;
+        if(role==='Middle Blocker'&&position==='Outside Hitter')return 45;
         if((position==='Outside Hitter'&&role==='Opposite')||(position==='Opposite'&&role==='Outside Hitter'))return 48;
         if(position==='Unspecified')return 4;
         return -18;
       }
       // Exact secondary preference is worth 65. Secondary Flex 45.5 for any
       // role, enough to fill shortages but never override exact primary (100).
-      return Math.max(affinity(primary),.65*affinity(secondary));
+      let value=Math.max(affinity(primary),.65*affinity(secondary));
+      // A player who has never had their PRIMARY role in a finished round
+      // goes ahead of equally compatible players who already had a turn.
+      // This incentive applies only to an exact primary assignment, not Flex.
+      if(role===recognizedPrimary(player)&&needsPrimary(player,roleHistory))value+=185;
+      // For primary Flex/Unspecified, favor a real secondary preference if
+      // there is no specific primary goal to satisfy.
+      if(!recognizedPrimary(player)&&role===secondary&&role!=='Flex'&&role!=='Unspecified'&&
+         !historyOf(roleHistory,player.id).includes(role))value+=65;
+      return value;
     }
     // 6! <= 720 arrangements; choose the best fit without changing teams.
     const used=Array(roles.length).fill(false);
@@ -315,7 +354,7 @@
       ...(!hasPrimary('Middle Blocker')?['Middle Blocker']:[])
     ];
   }
-  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,teamRoleWarnings,canPlayMiddle,K_FACTOR};
+  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,teamRoleWarnings,canPlayMiddle,needsPrimary,rolePriorityCost,K_FACTOR};
   root.RallyMath=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

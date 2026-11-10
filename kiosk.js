@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.40';
+  const VERSION='1.41';
   const $=selector=>document.querySelector(selector);
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Denver',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
