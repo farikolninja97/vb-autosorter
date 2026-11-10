@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.41';
+  const VERSION='1.42';
   const $=selector=>document.querySelector(selector);
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Denver',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10,7 +10,7 @@
   let toastTimer=null,refreshTimer=null;
   const moneylessTeamName=team=>window.RallyTeamNames.label(team,state.data?.event?.team_naming_mode);
   const courtName=c=>`Court ${c}`;
-  const assignedRoleLabel=role=>role==='Middle Blocker'?'Middle Blocker · front row':role==='Libero'?'Libero · back row':role;
+  const assignedRoleLabel=role=>window.RallyTeamDisplay.label(role);
   const allTeams=()=>state.data?.teams||[];
   const allMatches=()=>state.data?.matches||[];
   const teamById=id=>allTeams().find(t=>t.id===id)||null;
@@ -60,7 +60,7 @@
   function renderTeam(team,court){
     return `<section class="kiosk-team" data-team-id="${escapeHtml(team.id)}" aria-label="${courtName(court)} ${moneylessTeamName(team)}">
       <h3>${escapeHtml(moneylessTeamName(team))}</h3>
-      <ol class="roster-list">${(team.players||[]).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${state.data?.event?.position_balance===true&&player.assigned_position?`<small>${escapeHtml(assignedRoleLabel(player.assigned_position))}</small>`:''}</li>`).join('')}</ol>
+      <ol class="roster-list">${window.RallyTeamDisplay.sort(team.players||[],state.data?.event?.position_balance===true).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${state.data?.event?.position_balance===true&&player.assigned_position?`<small>${escapeHtml(assignedRoleLabel(player.assigned_position))}</small>`:''}</li>`).join('')}</ol>
     </section>`;
   }
   function renderCourt(court){
