@@ -84,7 +84,7 @@
   // Allows a new profile to be created from Check-in and then returns the admin there.
   let returnToCheckinAfterPlayerAdd=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.45';
+  const APP_VERSION='1.46';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -134,6 +134,22 @@
     if(panel)panel.innerHTML=renderTeamDraft();
   }
   function draftMemberLabel(p){return p.is_placeholder?'Sub needed':p.name;}
+  // Position-detail visibility applies to the PRIVATE preview as well as
+  // published Live Courts. The preview always shows the assigned role for
+  // review, but primary / secondary profile preferences follow the setting.
+  function draftMemberInfo(member){
+    if(member.is_placeholder)return 'Unrated placeholder';
+    const parts=[];
+    if(admin?.position_balance===true&&pub?.event?.show_player_positions===true){
+      const primary=member.position||member.primary_position||'Unspecified';
+      const secondary=member.secondary_position||'Unspecified';
+      parts.push(`${safe(primary)}${secondary!=='Unspecified'?` / ${safe(secondary)}`:''}`);
+    }
+    if(admin?.position_balance===true&&member.assigned_position)
+      parts.push(`Assigned: ${safe(assignedRoleLabel(member.assigned_position))}`);
+    if(showMmr)parts.push(`${Number(member.mmr)} MMR`);
+    return parts.join(' · ');
+  }
   // These warnings are admin-only; player profile preferences never leak to the kiosk.
   function positionWarnings(team,published=false){
     if(!adminGranted||admin?.position_balance!==true||!Array.isArray(team)||team.length!==6)return [];
@@ -174,7 +190,7 @@
   }
   function preferenceTitle(member,published=false){
     const info=roleHighlight(member,published);
-    if(!info)return '';
+    if(!info||pub?.event?.show_player_positions!==true)return '';
     const label=info.kind==='primary'?'Primary position':info.kind==='secondary'?'Secondary position':'Autofilled position';
     const returning=info.returned?' · Returning to a preferred position after filling previously':'';
     return ` title="${safe(label+returning)}"`;
@@ -203,7 +219,8 @@
         return `<div class="draft-team"><div class="draft-team-heading"><strong>${safe(draftTeamName(ti))}</strong>${positionWarningIcons(team)}${!showMmr?'':`<span class="draft-team-average">${Math.round(averages[ti])} avg MMR</span>`}</div>
         <ul class="draft-player-list">${team.map((p,si)=>({p,si})).sort((a,b)=>window.RallyTeamDisplay.rank(a.p.assigned_position)-window.RallyTeamDisplay.rank(b.p.assigned_position)||String(a.p.name).localeCompare(String(b.p.name))).map(({p,si})=>{
           const active=Boolean(draftSelection&&draftSelection.team===ti&&draftSelection.slot===si);
-          return `<li class="draft-player ${active?'draft-player-selected':''}${preferenceClass(p)}"${preferenceTitle(p)}><div class="draft-player-details"><strong>${safe(draftMemberLabel(p))}</strong><small>${p.is_placeholder?'Unrated placeholder':`${admin?.position_balance===true?`${safe(p.position||'Unspecified')}${p.secondary_position&&p.secondary_position!=='Unspecified'?` / ${safe(p.secondary_position)}`:''}`:''}${!showMmr?'':`${admin?.position_balance===true?' · ':''}${Number(p.mmr)} MMR`}`}${admin?.position_balance===true&&p.assigned_position?`<span class="draft-assigned"> · Assigned: ${safe(assignedRoleLabel(p.assigned_position))}</span>`:''}</small></div>${manualSwapUnlocked?`<button type="button" class="btn btn-small ${active?'btn-primary':'btn-secondary'} draft-swap-btn" data-action="draft-swap-slot" data-team="${ti}" data-slot="${si}" aria-pressed="${active}">${active?'Selected':sel?'Swap here':'Select'}</button>`:''}</li>`;
+          const details=draftMemberInfo(p);
+          return `<li class="draft-player ${active?'draft-player-selected':''}${preferenceClass(p)}"${preferenceTitle(p)}><div class="draft-player-details"><strong>${safe(draftMemberLabel(p))}</strong>${details?`<small>${details}</small>`:''}</div>${manualSwapUnlocked?`<button type="button" class="btn btn-small ${active?'btn-primary':'btn-secondary'} draft-swap-btn" data-action="draft-swap-slot" data-team="${ti}" data-slot="${si}" aria-pressed="${active}">${active?'Selected':sel?'Swap here':'Select'}</button>`:''}</li>`;
         }).join('')}</ul></div>`;
       }).join('')}</div></section>`).join('')}</div>
       <div class="draft-footer"><div><button type="button" class="btn btn-secondary" data-action="draft-regenerate">↻ Generate different teams</button> <button type="button" class="btn btn-secondary" data-action="draft-discard">Discard preview</button></div><button type="button" class="btn btn-primary" data-action="draft-publish">✓ Publish these teams</button></div>
@@ -997,7 +1014,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       ${section('Court format',`<div class="session-court-grid">${court(1)}${court(2)}</div><p class="session-capacity-note">${e.capacity} total player spots · ${totalTeamsFor(e)} teams · ${totalMatchesFor(e)} matches per round</p>`, 'Court sizes and team counts take effect as soon as you tap a choice. Reducing capacity below today’s check-ins is blocked.')}
       ${section('Match & court rules',settingsRow('Target score',[15,21,25].map(n=>settingsChoice('score',n,`${n} points`,Number(e.target_score)||25,!open)).join(''),'Win by two points.')+settingsRow('Court balancing',settingsChoice('mode','mixed','🏐 Mixed',mode,!open)+settingsChoice('mode','split','🏆 Competitive / beginner',mode,!open||ignoreMmr),'Competitive / beginner courts require MMR.'))}
       ${section('Team balancing',settingsRow('Balance by volleyball position',yesNo('positions',positions,!open),'When off, assigned positions and missing-specialist icons stay hidden.')+settingsRow('Balance women across teams',yesNo('gender',admin?.gender_balance===true,!open))+settingsRow('Ignore MMR for team creation',yesNo('mmr',ignoreMmr,!open),'Scores still update MMR. This only changes team sorting.'))}
-      ${section('Display',settingsRow('Team names',settingsChoice('name','numbers','Team 1–6',e.team_naming_mode||'numbers')+settingsChoice('name','funny','Funny names',e.team_naming_mode||'numbers'),'Blue uses Team 1–3; Red uses Team 4–6.')+settingsRow('Show positions on Live Courts & kiosk',yesNo('prefVisibility',e.show_player_positions===true,!positions),'Off: player names only. On: assigned roles and primary / secondary preferences. Team Preview always shows assignments to admins.'))}
+      ${section('Display',settingsRow('Team names',settingsChoice('name','numbers','Team 1–6',e.team_naming_mode||'numbers')+settingsChoice('name','funny','Funny names',e.team_naming_mode||'numbers'),'Blue uses Team 1–3; Red uses Team 4–6.')+settingsRow('Show positions on Live Courts & kiosk',yesNo('prefVisibility',e.show_player_positions===true,!positions),'Off: names only on published Live Courts/kiosk; preview still shows assigned roles but hides primary/secondary preferences. On: reveal position details.'))}
       ${!open?`<p class="session-settings-note">${isRoundComplete()?'All matches are complete. Choose Next round · Edit rules to archive the results and unlock these options.':'Complete all match scores to unlock settings for the next round.'} Finish Session remains protected under Admin.</p>`:''}`;
   }
   function updateSessionDialogFooter(){

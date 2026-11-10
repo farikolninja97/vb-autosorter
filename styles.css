@@ -1195,3 +1195,39 @@ html[data-theme="dark"] .team-published-member.is-preferred-primary,html[data-th
 html[data-theme="dark"] .team-published-member.is-preferred-secondary,html[data-theme="dark"] .draft-player.is-preferred-secondary{background:#163d67;color:#eaf6ff}
 html[data-theme="dark"] .team-published-member.is-preferred-autofilled,html[data-theme="dark"] .draft-player.is-preferred-autofilled{background:#5e2735;color:#ffe9ee}
 @media(max-width:620px){.draft-head-actions{align-items:flex-start;width:100%}.draft-head-actions .draft-mmr-toggle{width:100%}}
+
+/* V1.46 — outline the LETTERS of a name, never the entire player row.
+   Colors are private admin role-fit indicators. Ordinary player labels remain
+   easy to read in light and dark themes. */
+.team-published-member.is-preferred-primary,
+.team-published-member.is-preferred-secondary,
+.team-published-member.is-preferred-autofilled {
+  outline:none!important;outline-offset:0;background:transparent!important;
+  border-radius:0;padding:0 0 0 11px;
+}
+.draft-player.is-preferred-primary,
+.draft-player.is-preferred-secondary,
+.draft-player.is-preferred-autofilled {
+  outline:none!important;outline-offset:0;background:transparent!important;
+  border-radius:8px;padding:7px 5px;
+}
+/* A manually selected draft swap remains visibly selected. */
+.draft-player.draft-player-selected {
+  background:#fff0d1!important;border-color:#b68b2d;
+}
+html[data-theme="dark"] .draft-player.draft-player-selected {background:#624c2a!important;border-color:#d0a23b}
+.team-published-member.is-preferred-primary .team-member-name,
+.draft-player.is-preferred-primary .draft-player-details > strong {--role-letter-outline:#d8a000}
+.team-published-member.is-preferred-secondary .team-member-name,
+.draft-player.is-preferred-secondary .draft-player-details > strong {--role-letter-outline:#2787ee}
+.team-published-member.is-preferred-autofilled .team-member-name,
+.draft-player.is-preferred-autofilled .draft-player-details > strong {--role-letter-outline:#cf4059}
+.team-published-member[class*="is-preferred-"] .team-member-name,
+.draft-player[class*="is-preferred-"] .draft-player-details > strong {
+  /* Stroke paints around glyphs; it is not a box or colored row background. */
+  -webkit-text-stroke:1.35px var(--role-letter-outline);
+  paint-order:stroke fill;
+  /* Simple fallback for older browsers that don't support text strokes. */
+  text-shadow:0.75px 0 var(--role-letter-outline),-0.75px 0 var(--role-letter-outline),
+    0 0.75px var(--role-letter-outline),0 -0.75px var(--role-letter-outline);
+}
