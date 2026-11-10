@@ -1,4 +1,4 @@
-/* RallyRank V1.39 — 6v6 house-rule role template: dedicated front Middle and back Libero. */
+/* RallyRank V1.40 — 6v6 house-rule role template: dedicated front Middle and back Libero. */
 (function(root){
   'use strict';
   const DEFAULT_COURT_COUNTS=[3,3];
@@ -55,6 +55,8 @@
     if(isPlaceholder(player))return 0;
     const primary=player.position||player.primary_position||'Unspecified';
     const secondary=player.secondary_position||'Unspecified';
+    // A woman may cover Middle only when she explicitly listed it as primary or secondary.
+    if(role==='middle' && player.gender==='Woman' && primary!=='Middle Blocker' && secondary!=='Middle Blocker')return 0;
     function affinity(position){
       if(position==='Flex')return .60;
       if(role==='setter')return position==='Setter'?1:0;
@@ -73,8 +75,7 @@
   function positionBalanceCost(teams,mode,teamSize,counts=DEFAULT_COURT_COUNTS){
     const all=Array.from({length:teams.length},(_,i)=>i);
     const blocks=mode==='split'?courtBlocks(counts):[all];
-    // Squared differences softly reward distributing scarce specialties,
-    // while the main MMR variance score stays the dominant objective.
+    // Scarce specialty coverage takes priority over MMR variance.
     const weight=9000*(teamSize/6);
     let cost=0;
     for(const block of blocks){
@@ -94,19 +95,23 @@
         const best=Math.max(0,...team.map(p=>positionCoverage(p,role)));
         cost+=15000*(1-best)**2;
       }
+      if(!team.some(p=>canPlayMiddle(p)))cost+=1000000;
     }
     return cost;
   }
-  function score(teams,priorPairs,teamSize,mode,balanceWomen=false,balancePositions=false,counts=DEFAULT_COURT_COUNTS){
-    const avgs=teams.map(teamAverage);
+  function score(teams,priorPairs,teamSize,mode,balanceWomen=false,balancePositions=false,counts=DEFAULT_COURT_COUNTS,ignoreMmr=false){
     const all=Array.from({length:teams.length},(_,i)=>i);
     const blocks=mode==='split'?courtBlocks(counts):[all];
     let ratingCost=0;
-    for(const block of blocks){
-      const subset=block.map(i=>avgs[i]);
-      const target=subset.reduce((sum,n)=>sum+n,0)/subset.length;
-      const range=Math.max(...subset)-Math.min(...subset);
-      ratingCost+=(subset.reduce((sum,n)=>sum+(n-target)**2,0)+range*range*.6)*teamSize**2;
+    if(!ignoreMmr){
+      const avgs=teams.map(teamAverage);
+      for(const block of blocks){
+        const subset=block.map(i=>avgs[i]);
+        const target=subset.reduce((sum,n)=>sum+n,0)/subset.length;
+        const range=Math.max(...subset)-Math.min(...subset);
+        // V1.40: MMR is a gentle tie-breaker, not the main constraint.
+        ratingCost+=(subset.reduce((sum,n)=>sum+(n-target)**2,0)+range*range*.6)*teamSize**2*.0001;
+      }
     }
     let repeats=0;
     for(const team of teams){
@@ -115,7 +120,7 @@
         {const n=priorPairs.get(pairKey(actual[i].id,actual[j].id))||0; if(n)repeats+=2600*n+4400*n*n;}
       }
     }
-    if(mode==='mixed'){
+    if(mode==='mixed'&&!ignoreMmr){
       // 'Advanced' initially starts at 1500. Rating >= 1400 makes distribution
       // resilient as those players' ratings evolve. Only admins see ratings.
       const advanced=teams.map(team=>realPlayers(team).filter(p=>Number(p.mmr)>=1400).length);
@@ -123,7 +128,7 @@
       const unevenTeams=advanced.reduce((n,c)=>n+(c-avgAdvanced)**2,0);
       const court1Expected=advanced.reduce((a,b)=>a+b,0)*teams.slice(0,counts[0]).reduce((a,t)=>a+t.length,0)/teams.reduce((a,t)=>a+t.length,0);
       const courtDifference=Math.abs(advanced.slice(0,counts[0]).reduce((a,b)=>a+b,0)-court1Expected)*2;
-      ratingCost+=unevenTeams*110000+courtDifference*courtDifference*170000;
+      ratingCost+=unevenTeams*350+courtDifference*courtDifference*550;
     }
     if(balanceWomen){
       // Optimize the number of SELF-RECORDED women per team, never guessing
@@ -143,6 +148,8 @@
       }
     }
     if(balancePositions)ratingCost+=positionBalanceCost(teams,mode,teamSize,counts);
+    // The Middle restriction is applied only when assigning roles. When
+    // position balancing is OFF, teams have no assigned roles at all.
     return ratingCost+repeats;
   }
   function makeTeams(players,teamSize,previousTeams=[],mode='mixed',options={}){
@@ -154,12 +161,13 @@
     const teamCount=teamSizes.length;
     const averageSize=teamSizes.reduce((sum,n)=>sum+n,0)/teamCount;
     if(!['mixed','split'].includes(mode))throw Error('Unknown court balancing mode.');
+    const ignoreMmr=options?.ignoreMmr===true;
     const balanceWomen=options?.balanceWomen===true;
     const balancePositions=options?.balancePositions===true;
     const capacity=teamSizes.reduce((sum,n)=>sum+n,0);
     if(players.length<teamCount)throw Error(`At least ${teamCount} real players are needed (one per team).`);
     const selected=players.slice(0,capacity);
-    if(selected.some(p=>isPlaceholder(p)||!Number.isFinite(Number(p.mmr))))throw Error('Each checked-in player needs a valid MMR.');
+    if(selected.some(p=>isPlaceholder(p)||(!ignoreMmr&&!Number.isFinite(Number(p.mmr)))))throw Error('Each checked-in player needs a valid MMR when rating balance is enabled.');
     if(new Set(selected.map(p=>p.id)).size!==selected.length)throw Error('Duplicate player on signup list.');
     const missing=capacity-selected.length;
     const priorPairs=new Map();
@@ -169,8 +177,10 @@
     }
     let best=null,bestScore=Infinity;
     for(let trial=0;trial<140;trial++){
-      const sorted=selected.map(p=>({p,sort:Number(p.mmr)+(Math.random()-.5)*(mode==='split'||trial===0?0:110)}))
-        .sort((a,b)=>b.sort-a.sort).map(x=>x.p);
+      const sorted=ignoreMmr
+        ? [...selected].sort(()=>Math.random()-.5)
+        : selected.map(p=>({p,sort:Number(p.mmr)+(Math.random()-.5)*(mode==='split'||trial===0?0:110)}))
+          .sort((a,b)=>b.sort-a.sort).map(x=>x.p);
       const teams=Array.from({length:teamCount},()=>[]);
       // Spread unrated substitute spots across teams, keeping at least one
       // registered participant on every team.
@@ -215,7 +225,7 @@
        const order=first.flatMap((index,i)=>[index,second[i]] .filter(v=>v!==undefined)).concat(second.slice(first.length));
        assign(sorted,order);
       }
-      let current=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts);
+      let current=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts,ignoreMmr);
       for(let n=0;n<450;n++){
         const a=Math.floor(Math.random()*teamCount),b=Math.floor(Math.random()*teamCount);
         if(a===b||(mode==='split'&&(a<courtCounts[0])!==(b<courtCounts[0])))continue;
@@ -223,19 +233,22 @@
         const bReal=teams[b].map((p,i)=>!isPlaceholder(p)?i:-1).filter(i=>i>=0);
         const ia=aReal[Math.floor(Math.random()*aReal.length)],ib=bReal[Math.floor(Math.random()*bReal.length)];
         [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
-        const next=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts);
+        const next=score(teams,priorPairs,averageSize,mode,balanceWomen,balancePositions,courtCounts,ignoreMmr);
         if(next<current){current=next;}
         else [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
       }
       if(current<bestScore){bestScore=current;best=teams.map(t=>[...t]);}
     }
-    // Every 6v6 roster receives house-rule role assignments, even if the
-    // organizer has disabled the *team distribution* position-balance toggle.
-    // Smaller court formats retain their previous opt-in behavior.
-    return best.map(team=>(balancePositions||team.length===6)?assignTeamPositions(team):team);
+    // Do not assign or display positions when the admin disables the
+    // position-balancing option, including in 6v6 games.
+    return balancePositions?best.map(assignTeamPositions):best;
   }
   // Assign specific court roles AFTER balancing team ratings. Flex is never
   // displayed as an assignment: it means the player can cover any real role.
+  function canPlayMiddle(player){
+    if(isPlaceholder(player))return true; // A substitute slot can be filled by a Middle specialist later.
+    return player.gender!=='Woman' || [player.position||player.primary_position,player.secondary_position].includes('Middle Blocker');
+  }
   function assignTeamPositions(team){
     if(!Array.isArray(team)||team.length<2||team.length>6)throw Error('A team must have 2–6 spots.');
     // Six *different* players: 1 Setter, 2 Outsides, 1 Opposite, 1 Middle,
@@ -256,6 +269,7 @@
       if(isPlaceholder(player))return 0;
       const primary=player.position||player.primary_position||'Unspecified';
       const secondary=player.secondary_position||'Unspecified';
+      if(role==='Middle Blocker'&&!canPlayMiddle(player))return -100000;
       function affinity(position){
         if(position===role)return 100;
         if(position==='Flex')return 70; // May play ANY role; below exact primary.
@@ -274,13 +288,20 @@
       if(i===team.length){if(value>bestScore){bestScore=value;bestSlots=[...slots];}return;}
       for(let j=0;j<roles.length;j++){
         if(used[j])continue;
+        // Never assign an ineligible woman to Middle, regardless of MMR, Flex or shortages.
+        // If no legal assignment exists, leave the Middle role unfilled (null),
+        // instead of assigning an unwanted position to a player.
         used[j]=true;slots.push(j);
         dfs(i+1,value+fit(team[i],roles[j]),slots);
         slots.pop();used[j]=false;
       }
     }
     dfs(0,0,[]);
-    return team.map((p,i)=>({...p,assigned_position:roles[bestSlots[i]]}));
+    return team.map((p,i)=>({
+      ...p,
+      assigned_position:roles[bestSlots[i]]==='Middle Blocker'&&!canPlayMiddle(p)
+        ? null : roles[bestSlots[i]]
+    }));
   }
   // Admin-only compact indicators. A dedicated specialist must have this
   // role as their PRIMARY preference, not merely as a secondary or Flex role.
@@ -294,7 +315,7 @@
       ...(!hasPrimary('Middle Blocker')?['Middle Blocker']:[])
     ];
   }
-  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,teamRoleWarnings,K_FACTOR};
+  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,teamRoleWarnings,canPlayMiddle,K_FACTOR};
   root.RallyMath=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

@@ -1082,3 +1082,10 @@ html[data-brand="cos"][data-theme="dark"] .attendance-position-chip b{background
 .role-gap-middle{background:rgba(125,76,194,.12)}
 .draft-team-heading .role-gap-icons{margin-right:auto}
 @media(max-width:480px){.role-gap-icons{gap:2px;margin-left:4px}.role-gap-icon{font-size:15px;min-width:18px;min-height:18px}}
+
+/* V1.40 · compact daily attendance and optional rating-free sorting */
+.daily-ignore-mmr-toggle{display:flex;gap:10px;align-items:center;margin:12px 0;padding:10px 12px;border:1px solid var(--border,#d8e1ec);border-radius:10px;background:var(--panel2,#f7f9fc);font-size:12px;cursor:pointer}
+.daily-ignore-mmr-toggle input{accent-color:var(--scarlet,#bf304a);width:18px;height:18px;flex:none}
+.daily-ignore-mmr-toggle span{display:flex;flex-direction:column;gap:3px}.daily-ignore-mmr-toggle small{color:var(--muted,#7b8997);line-height:1.4}
+html[data-theme=dark] .daily-ignore-mmr-toggle{background:var(--panel2,#1b2b3d)}
+@media(max-width:600px){.daily-ignore-mmr-toggle{font-size:12px;padding:9px}}
