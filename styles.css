@@ -1175,3 +1175,23 @@ html[data-theme="dark"] .mmr-privacy-toggle[aria-pressed="true"]{background:#5b4
 html[data-theme="dark"] .round-next-banner{background:#153b32;color:#d9ffe9;border-color:#32836b}
 html[data-theme="dark"] .matchday-score-progress{background:#29445d}
 @media(max-width:640px){.matchday-primary-actions .btn{width:100%}.round-next-banner>div:last-child,.round-next-banner .btn{width:100%}.session-dialog-footer{align-items:stretch;flex-direction:column}.session-dialog-footer .session-dialog-actions{width:100%}.session-dialog-footer .session-dialog-actions .btn{flex:1}.round-next-banner{padding:13px}}
+
+/* V1.44 — compact private color outlines; no player preference badges. */
+.draft-head-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.draft-head-actions .draft-mmr-toggle{min-height:40px;white-space:nowrap;font-weight:850}
+.draft-role-legend{display:flex;align-items:center;flex-wrap:wrap;gap:9px 13px;margin:10px 0 12px;font-size:11px;font-weight:750;color:var(--muted,#64748b)}
+.draft-role-legend span{display:inline-flex;align-items:center;gap:6px}
+.draft-role-legend i{width:12px;height:12px;border:2.5px solid;border-radius:4px;display:inline-block}
+.draft-role-legend .role-key-primary{border-color:#dc9b08;background:#fff0a8}
+.draft-role-legend .role-key-secondary{border-color:#2787ee;background:#dceaff}
+.draft-role-legend .role-key-autofilled{border-color:#cf4059;background:#ffe0e5}
+/* Override old primary/secondary outlines for both published and draft rosters. */
+.team-published-member.is-preferred-primary,.draft-player.is-preferred-primary{outline:3px solid #dc9b08;outline-offset:-2px;background:#fff8da;border-radius:7px;padding:6px}
+.team-published-member.is-preferred-secondary,.draft-player.is-preferred-secondary{outline:3px solid #2787ee;outline-offset:-2px;background:#eaf3ff;border-radius:7px;padding:6px}
+.team-published-member.is-preferred-autofilled,.draft-player.is-preferred-autofilled{outline:3px solid #cf4059;outline-offset:-2px;background:#ffedf0;border-radius:7px;padding:6px}
+/* Prior-round return marker remains an unobtrusive inset stripe, not a tag. */
+.is-preferred-return{box-shadow:none!important}
+html[data-theme="dark"] .team-published-member.is-preferred-primary,html[data-theme="dark"] .draft-player.is-preferred-primary{background:#514017;color:#fff7d7}
+html[data-theme="dark"] .team-published-member.is-preferred-secondary,html[data-theme="dark"] .draft-player.is-preferred-secondary{background:#163d67;color:#eaf6ff}
+html[data-theme="dark"] .team-published-member.is-preferred-autofilled,html[data-theme="dark"] .draft-player.is-preferred-autofilled{background:#5e2735;color:#ffe9ee}
+@media(max-width:620px){.draft-head-actions{align-items:flex-start;width:100%}.draft-head-actions .draft-mmr-toggle{width:100%}}

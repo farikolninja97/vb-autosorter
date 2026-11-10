@@ -84,7 +84,7 @@
   // Allows a new profile to be created from Check-in and then returns the admin there.
   let returnToCheckinAfterPlayerAdd=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.43';
+  const APP_VERSION='1.44';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -154,22 +154,27 @@
   }
   const sortedTeamMembers=(team)=>window.RallyTeamDisplay.sort(team,pub?.event?.position_balance===true);
   function assignedRoleLabel(position){return window.RallyTeamDisplay.label(position);}
-  // Only approved admins receive preference flags. These outlines indicate a
-  // *published/draft* assignment, never a guarantee about future rounds.
-  function preferenceOutline(member,published=false){
-    if(!adminGranted||admin?.position_balance!==true||member.is_placeholder)return '';
+  // Approved admins only: colors show whether the *assigned* role is a
+  // primary preference (yellow), secondary preference (blue), or a fill (red).
+  // No labels/tags are appended to player names. The original preference
+  // calculation remains unchanged, including return-after-filling history.
+  function roleHighlight(member,published=false){
+    if(!adminGranted||admin?.position_balance!==true||member.is_placeholder||!member.assigned_position)return null;
     const profile=published?(admin?.players||[]).find(p=>p.id===member.id):member;
-    const info=window.RallyTeamDisplay.preference(member,profile,admin?.session_role_history||{});
-    if(!info)return '';
-    const primary=info.kind==='primary';
-    const desc=info.returned?'Back in a preferred role after filling last round':(primary?'Primary preference assigned':'Secondary preference assigned');
-    return `<span class="role-preference-mark ${primary?'role-preference-primary':'role-preference-secondary'}" title="${safe(desc)}" aria-label="${safe(desc)}">${info.returned?'↩ ':''}${primary?'✓ Primary':'◇ Secondary'}</span>`;
+    if(!profile)return null;
+    const match=window.RallyTeamDisplay.preference(member,profile,admin?.session_role_history||{});
+    return {kind:match?.kind||'autofilled',returned:match?.returned===true};
   }
   function preferenceClass(member,published=false){
-    if(!adminGranted||admin?.position_balance!==true||member.is_placeholder)return '';
-    const profile=published?(admin?.players||[]).find(p=>p.id===member.id):member;
-    const info=window.RallyTeamDisplay.preference(member,profile,admin?.session_role_history||{});
+    const info=roleHighlight(member,published);
     return info?` is-preferred-${info.kind}${info.returned?' is-preferred-return':''}`:'';
+  }
+  function preferenceTitle(member,published=false){
+    const info=roleHighlight(member,published);
+    if(!info)return '';
+    const label=info.kind==='primary'?'Primary position':info.kind==='secondary'?'Secondary position':'Autofilled position';
+    const returning=info.returned?' · Returning to a preferred position after filling previously':'';
+    return ` title="${safe(label+returning)}"`;
   }
   function preferredRoleProgress(groups){
     if(admin?.position_balance!==true)return '';
@@ -186,15 +191,16 @@
     const averages=groups.map(window.RallyMath.teamAverage);
     const sel=draftSelection&&groups[draftSelection.team]?.[draftSelection.slot];
     return `<section class="team-draft" aria-label="Unpublished team preview">
-      <div class="team-draft-head"><div><span class="draft-label">ADMIN ONLY · NOT PUBLISHED</span><h3><button type="button" class="draft-secret-trigger" data-action="draft-secret-tap" aria-label="Team Preview">Team Preview</button></h3>${manualSwapUnlocked?'<p class="draft-unlocked-note">🔓 Manual roster editing unlocked. Tap <strong>Select</strong>, then <strong>Swap here</strong> on another player or substitute slot. Tap the Team Preview title five more times to hide editing.</p>':'<p>Review the ${groups.length} suggested teams and their assignments, then publish or generate another set.</p>'}</div><span class="draft-changes">Nothing goes live until you publish.</span></div>
-      <div class="draft-summary"><strong>${!showMmr?'🔒 MMR hidden':admin?.ignore_mmr===true?'MMR ignored for team creation':`Average MMR spread: ${safe(window.RallyMath.spread(groups))}`}</strong><span>${groups.flat().filter(p=>p.is_placeholder).length} unrated sub slots</span>${admin.gender_balance===true?`<span>Women per team: ${groups.map(g=>g.filter(p=>!p.is_placeholder&&p.gender==='Woman').length).join(' / ')}</span>`:''}${preferredRoleProgress(groups)}</div>
+      <div class="team-draft-head"><div><span class="draft-label">ADMIN ONLY · NOT PUBLISHED</span><h3><button type="button" class="draft-secret-trigger" data-action="draft-secret-tap" aria-label="Team Preview">Team Preview</button></h3>${manualSwapUnlocked?'<p class="draft-unlocked-note">🔓 Manual roster editing unlocked. Tap <strong>Select</strong>, then <strong>Swap here</strong> on another player or substitute slot. Tap the Team Preview title five more times to hide editing.</p>':`<p>Review the ${groups.length} suggested teams and their assignments, then publish or generate another set.</p>`}</div><div class="draft-head-actions"><button type="button" class="btn btn-small btn-secondary draft-mmr-toggle" data-action="toggle-mmr" aria-pressed="${showMmr}" aria-label="${showMmr?'Hide MMR in team preview':'Show MMR in team preview'}">${showMmr?'🙈 Hide MMR':'👁 Show MMR'}</button><span class="draft-changes">Nothing goes live until you publish.</span></div></div>
+      ${admin?.position_balance===true?'<div class="draft-role-legend" aria-label="Position assignment color key"><span><i class="role-key-primary"></i>Primary</span><span><i class="role-key-secondary"></i>Secondary</span><span><i class="role-key-autofilled"></i>Autofilled</span></div>':''}
+      <div class="draft-summary"><strong>${!showMmr?'🔒 MMR hidden':`${admin?.ignore_mmr===true?'MMR ignored for sorting · ':''}Average MMR spread: ${safe(window.RallyMath.spread(groups))}`}</strong><span>${groups.flat().filter(p=>p.is_placeholder).length} unrated sub slots</span>${admin.gender_balance===true?`<span>Women per team: ${groups.map(g=>g.filter(p=>!p.is_placeholder&&p.gender==='Woman').length).join(' / ')}</span>`:''}${preferredRoleProgress(groups)}</div>
       ${sel?`<div class="draft-selected" role="status">Selected: <strong>${safe(draftMemberLabel(sel))}</strong> · Court ${draftSelection.team<courtCountFor(pub.event,1)?1:2}, ${safe(draftTeamName(draftSelection.team))}. Pick another roster slot to swap. <button type="button" class="btn btn-small btn-secondary" data-action="draft-cancel-selection">Cancel selection</button></div>`:''}
       <div class="draft-courts">${[1,2].map(court=>`<section class="draft-court draft-court-${court}" aria-label="Draft Court ${court}"><h4>${court===1?'🔵':'🔴'} Court ${court} · ${courtSizeFor(pub.event,court)}v${courtSizeFor(pub.event,court)}</h4><div class="draft-teams ${courtCountFor(pub.event,court)===2?'two-team-layout':''}">${groups.slice(court===1?0:courtCountFor(pub.event,1),court===1?courtCountFor(pub.event,1):totalTeamsFor(pub.event)).map((team,index)=>{
         const ti=(court===1?0:courtCountFor(pub.event,1))+index;
-        return `<div class="draft-team"><div class="draft-team-heading"><strong>${safe(draftTeamName(ti))}</strong>${positionWarningIcons(team)}${!showMmr||admin?.ignore_mmr===true?'':`<span class="draft-team-average">${Math.round(averages[ti])} avg MMR</span>`}</div>
+        return `<div class="draft-team"><div class="draft-team-heading"><strong>${safe(draftTeamName(ti))}</strong>${positionWarningIcons(team)}${!showMmr?'':`<span class="draft-team-average">${Math.round(averages[ti])} avg MMR</span>`}</div>
         <ul class="draft-player-list">${team.map((p,si)=>({p,si})).sort((a,b)=>window.RallyTeamDisplay.rank(a.p.assigned_position)-window.RallyTeamDisplay.rank(b.p.assigned_position)||String(a.p.name).localeCompare(String(b.p.name))).map(({p,si})=>{
           const active=Boolean(draftSelection&&draftSelection.team===ti&&draftSelection.slot===si);
-          return `<li class="draft-player ${active?'draft-player-selected':''}${preferenceClass(p)}"><div class="draft-player-details"><strong>${safe(draftMemberLabel(p))}</strong>${preferenceOutline(p)}<small>${p.is_placeholder?'Unrated placeholder':`${admin?.position_balance===true?`${safe(p.position||'Unspecified')}${p.secondary_position&&p.secondary_position!=='Unspecified'?` / ${safe(p.secondary_position)}`:''}`:''}${!showMmr||admin?.ignore_mmr===true?'':`${admin?.position_balance===true?' · ':''}${Number(p.mmr)} MMR`}`}${admin?.position_balance===true&&p.assigned_position?`<span class="draft-assigned"> · Assigned: ${safe(assignedRoleLabel(p.assigned_position))}</span>`:''}</small></div>${manualSwapUnlocked?`<button type="button" class="btn btn-small ${active?'btn-primary':'btn-secondary'} draft-swap-btn" data-action="draft-swap-slot" data-team="${ti}" data-slot="${si}" aria-pressed="${active}">${active?'Selected':sel?'Swap here':'Select'}</button>`:''}</li>`;
+          return `<li class="draft-player ${active?'draft-player-selected':''}${preferenceClass(p)}"${preferenceTitle(p)}><div class="draft-player-details"><strong>${safe(draftMemberLabel(p))}</strong><small>${p.is_placeholder?'Unrated placeholder':`${admin?.position_balance===true?`${safe(p.position||'Unspecified')}${p.secondary_position&&p.secondary_position!=='Unspecified'?` / ${safe(p.secondary_position)}`:''}`:''}${!showMmr?'':`${admin?.position_balance===true?' · ':''}${Number(p.mmr)} MMR`}`}${admin?.position_balance===true&&p.assigned_position?`<span class="draft-assigned"> · Assigned: ${safe(assignedRoleLabel(p.assigned_position))}</span>`:''}</small></div>${manualSwapUnlocked?`<button type="button" class="btn btn-small ${active?'btn-primary':'btn-secondary'} draft-swap-btn" data-action="draft-swap-slot" data-team="${ti}" data-slot="${si}" aria-pressed="${active}">${active?'Selected':sel?'Swap here':'Select'}</button>`:''}</li>`;
         }).join('')}</ul></div>`;
       }).join('')}</div></section>`).join('')}</div>
       <div class="draft-footer"><div><button type="button" class="btn btn-secondary" data-action="draft-regenerate">↻ Generate different teams</button> <button type="button" class="btn btn-secondary" data-action="draft-discard">Discard preview</button></div><button type="button" class="btn btn-primary" data-action="draft-publish">✓ Publish these teams</button></div>
@@ -868,7 +874,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const gamesDone=matches.filter(m=>m.winner_team_id).length;
       const courtTitle=e.court_mode==='split'?(court===1?'Court 01 · Competitive':'Court 02 · Beginner-friendly'):`Court 0${court}`;
       const header=`<div class="court-header"><div><span class="court-color-label">${court===1?'🔵 BLUE COURT':'🔴 RED COURT'}</span><h3>${courtTitle}</h3><p>${courtSizeFor(e,court)}v${courtSizeFor(e,court)} · ${gamesDone}/${matches.length} matches completed</p></div>${statusPill(gamesDone===matches.length?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===matches.length?'win':'muted')}</div>`;
-      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid ${teams.length===2?'two-team-layout':''}">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}${positionWarningIcons(t.players,true)}</div>${adminTeamAverage(t)}<ul class="team-members">${sortedTeamMembers(t.players).map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute${assignedRole(p)}</small></li>`:`<li class="team-published-member${preferenceClass(p,true)}"><span class="team-member-name">${safe(p.name)}</span>${preferenceOutline(p,true)}${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
+      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid ${teams.length===2?'two-team-layout':''}">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}${positionWarningIcons(t.players,true)}</div>${adminTeamAverage(t)}<ul class="team-members">${sortedTeamMembers(t.players).map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute${assignedRole(p)}</small></li>`:`<li class="team-published-member${preferenceClass(p,true)}"${preferenceTitle(p,true)}><span class="team-member-name">${safe(p.name)}</span>${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
       const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of ${matches.length} complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div>${scoreCorrectionPanel(court)}</section>`;
       return {roster,schedule};
     });
