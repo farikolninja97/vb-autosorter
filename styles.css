@@ -1117,3 +1117,61 @@ html[data-theme="dark"] .matchday-settings-fold>summary,html[data-theme="dark"] 
 html[data-theme="dark"] .mmr-privacy-toggle{background:#26364b;border-color:#58708d;color:#e3f0ff}
 html[data-theme="dark"] .mmr-privacy-toggle[aria-pressed="true"]{background:#5b4320;color:#ffe1a4}
 @media(max-width:650px){.matchday-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.matchday-step{font-size:11px;padding:8px}.mmr-privacy-toggle{font-size:11px;padding:8px}.matchday-settings-fold>summary{align-items:flex-start;flex-direction:column}}
+
+/* V1.43 — fast, accessible one-tap admin session-settings dialog */
+.session-settings-dialog{width:min(820px,calc(100vw - 24px));max-width:820px;max-height:min(92dvh,940px);margin:auto;padding:0;border:1px solid var(--border,#cbd5e1);border-radius:18px;background:var(--panel,#fff);color:var(--text,#172a47);box-shadow:0 30px 90px #041a39aa;overflow:hidden}
+.session-settings-dialog::backdrop{background:rgba(3,14,33,.7);backdrop-filter:blur(3px)}
+.session-dialog-shell{display:flex;flex-direction:column;max-height:min(92dvh,940px);min-height:0}
+.session-dialog-header{padding:20px 23px 14px;display:flex;justify-content:space-between;align-items:flex-start;gap:15px;border-bottom:1px solid var(--border,#dde4ee);background:var(--panel,#fff)}
+.session-dialog-eyebrow{font-size:10px;font-weight:900;letter-spacing:1.5px;color:var(--scarlet,#aa2a40)}
+.session-dialog-header h2{font:850 29px 'Barlow Condensed',sans-serif;margin:3px 0 4px;color:inherit}
+.session-dialog-header p{font-size:12px;color:var(--muted,#67768c);margin:0}
+.session-dialog-close{flex:none;width:44px;height:44px;display:grid;place-items:center;background:var(--panel2,#f2f5f9);border:1px solid var(--border,#cbd5e1);border-radius:11px;color:inherit;font-size:20px;cursor:pointer}
+.session-dialog-content{overflow-y:auto;overscroll-behavior:contain;min-height:0;flex:1;padding:15px 23px 24px;scrollbar-gutter:stable}
+.session-dialog-footer{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 23px;background:var(--panel2,#f6f8fc);border-top:1px solid var(--border,#d9e3ee)}
+.session-dialog-footer span{font-size:11px;color:var(--muted,#607086);line-height:1.35}
+.session-settings-overview{display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;padding:10px 13px;border:1px solid var(--border,#d8e2ea);border-radius:10px;background:var(--panel2,#f5f8fa);font-size:12px;margin-bottom:16px}
+.session-settings-overview>span{color:var(--muted,#55677d)}.session-settings-overview>.session-open{color:#16835a;font-weight:800}.session-settings-overview>.session-locked{color:#ae4c3d;font-weight:800}
+.session-settings-group{border-bottom:1px solid var(--border,#dbe3ed);padding:4px 0 17px;margin-bottom:15px}.session-settings-group:last-child{border-bottom:0;margin:0;padding-bottom:0}
+.session-settings-group>h3{font:800 22px 'Barlow Condensed',sans-serif;margin:0 0 13px;color:inherit}
+.session-court-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.session-court-block{border:1px solid var(--border,#d3dce6);border-radius:12px;padding:13px;min-width:0}
+.session-court-1{border-top:4px solid #2070c6}.session-court-2{border-top:4px solid #c03852}
+.session-court-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:4px 8px;margin-bottom:11px}.session-court-head strong{font-size:14px}.session-court-head span{color:var(--muted,#61758a);font-size:11px}
+.session-setting-row{margin-bottom:14px}.session-setting-row:last-child{margin-bottom:0}.session-setting-row>strong{display:block;font-size:12px;margin-bottom:7px}.session-setting-row>small{font-size:11px;color:var(--muted,#607289);line-height:1.45;display:block;margin-top:5px}
+.session-choice-row{display:flex;gap:7px;flex-wrap:wrap}
+.session-choice{position:relative;min-height:44px;min-width:54px;padding:8px 13px;border-radius:9px;border:1.5px solid var(--border,#c7d4e3);background:var(--panel2,#f5f8fc);color:inherit;cursor:pointer;font-size:12px;font-weight:780;transition:background-color .13s,border-color .13s,box-shadow .13s}
+.session-choice.is-selected{border-color:#2673c8;background:#e8f2ff;color:#153b70;box-shadow:inset 0 0 0 1px #2673c8}
+.session-choice:not(.is-selected):hover:not(:disabled){border-color:#2673c8;background:var(--panel,#fff)}
+.session-choice:focus-visible,.session-dialog-close:focus-visible{outline:3px solid #4b91e1;outline-offset:2px}
+.session-choice:disabled{opacity:.43;cursor:not-allowed}.session-choice.is-selected:disabled{opacity:.78}
+.session-choice-check{font-size:11px;margin-left:4px;font-weight:900}
+.session-capacity-note{font-size:12px;font-weight:800;margin:11px 0 2px;color:inherit}
+.session-settings-note{font-size:11px;line-height:1.45;color:var(--muted,#66788c);margin:7px 0 0}
+.checkin-settings-shortcut{display:flex;align-items:center;justify-content:space-between;gap:13px;padding:15px 17px;border:1px solid var(--border,#d4dfeb);border-radius:12px;background:var(--panel,#fff);margin-top:16px}
+.checkin-settings-shortcut>div{display:flex;flex-direction:column;gap:5px}.checkin-settings-shortcut strong{font-size:14px}.checkin-settings-shortcut span{font-size:12px;color:var(--muted,#65768c)}
+.session-start-presets{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.session-start-presets>strong{font-size:12px;flex-basis:100%}
+.session-start-preset{min-height:42px;border-radius:9px;padding:7px 12px;border:1.5px solid var(--border,#bdcbdc);background:var(--panel2,#f5f8fc);color:inherit;cursor:pointer;font-size:12px;font-weight:750}
+.session-start-preset.is-selected{border-color:#2375cb;background:#eaf3ff;color:#144777}
+[data-theme="dark"] .session-choice.is-selected,[data-theme="dark"] .session-start-preset.is-selected{background:#1b466f;color:#dcefff;border-color:#74b6ff}
+@media(max-width:630px){.session-settings-dialog{width:calc(100vw - 10px);max-height:calc(100dvh - 18px);border-radius:14px}.session-dialog-shell{max-height:calc(100dvh - 18px)}.session-dialog-header{padding:13px}.session-dialog-content{padding:12px}.session-dialog-footer{padding:10px 12px}.session-court-grid{grid-template-columns:1fr}.session-court-block{padding:10px}.session-choice{flex:1}.session-choice-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.session-settings-group>h3{font-size:20px}.checkin-settings-shortcut{flex-wrap:wrap}.checkin-settings-shortcut .btn{width:100%}}
+
+/* V1.43 — streamlined check-in → match → repeat workflow */
+.matchday-workflow{margin-bottom:16px}
+.matchday-step.is-done{opacity:.84}.matchday-step.is-done b{background:#def5e8;color:#13613e}
+.matchday-action-card{border-top:4px solid #2374cd;box-shadow:0 7px 20px #12305412}
+.matchday-round-finished{border-top-color:#209669;background:var(--panel,#fff)}
+.matchday-phase-label{display:block;font-size:10px;letter-spacing:1.1px;font-weight:900;color:#2674b9;margin-bottom:5px}
+.matchday-round-finished .matchday-phase-label{color:#16865f}
+.matchday-primary-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:14px}
+.matchday-primary-actions .btn-primary{min-height:48px;font-size:14px}
+.matchday-help{color:var(--muted,#63798d);font-size:12px;line-height:1.55;margin:10px 0 0}
+.matchday-score-progress{height:9px;margin:14px 0 4px;border-radius:20px;background:#dce6f1;overflow:hidden}
+.matchday-score-progress span{display:block;height:100%;background:linear-gradient(90deg,#246eb9,#24a676);border-radius:20px;transition:width .18s}
+.round-next-banner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px 20px;border:1px solid #86d3aa;border-left:5px solid #23966a;border-radius:12px;background:#ebf8ef;padding:16px;margin:12px 0 20px;color:#134332}
+.round-next-banner>div:first-child{display:flex;flex-direction:column;gap:4px}.round-next-banner strong{font-size:17px}.round-next-banner small{font-size:12px;line-height:1.5}.round-next-banner>div:last-child{display:flex;flex-wrap:wrap;gap:9px}
+.session-dialog-footer .session-dialog-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+html[data-theme="dark"] .round-next-banner{background:#153b32;color:#d9ffe9;border-color:#32836b}
+html[data-theme="dark"] .matchday-score-progress{background:#29445d}
+@media(max-width:640px){.matchday-primary-actions .btn{width:100%}.round-next-banner>div:last-child,.round-next-banner .btn{width:100%}.session-dialog-footer{align-items:stretch;flex-direction:column}.session-dialog-footer .session-dialog-actions{width:100%}.session-dialog-footer .session-dialog-actions .btn{flex:1}.round-next-banner{padding:13px}}

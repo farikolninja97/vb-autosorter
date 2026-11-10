@@ -30,6 +30,12 @@
   const capacityFor=event=>courtCountFor(event,1)*courtSizeFor(event,1)+courtCountFor(event,2)*courtSizeFor(event,2);
   const totalMatchesFor=event=>[1,2].reduce((sum,c)=>sum+(courtCountFor(event,c)===2?2:3),0);
   const minimumPlayersFor=event=>totalTeamsFor(event);
+  // Only completed published matches are eligible for round advancement.
+  function isRoundComplete(){
+    const e=pub?.event;
+    return !!e&&e.status==='locked'&&Array.isArray(pub.matches)&&pub.matches.length===totalMatchesFor(e)&&pub.matches.every(m=>Boolean(m.winner_team_id));
+  }
+
   const formatCourtCounts=event=>`Court 1: ${courtCountFor(event,1)} teams · Court 2: ${courtCountFor(event,2)} teams`;
   const priorityRoster=()=>[...(pub?.roster||[])].sort((a,b)=>(a.rounds_played||0)-(b.rounds_played||0)||String(a.checked_at).localeCompare(String(b.checked_at)));
 
@@ -67,7 +73,7 @@
   let lastError='',searchText='',lastFlashTimer=null,leaderboardPosition='All',leaderboardTier='All';
   // Screen-share protection: session-local only, always starts hidden on each page load.
   let showMmr=false;
-  let setupExpanded=false;
+  // Session settings are a persistent, admin-only modal (not an expanding page section).
   const expandedRankingTiers=new Set();
   const PLACEMENT_GAMES=12,CHALLENGER_GAMES=18,PLACEMENT_MULTIPLIER=2;
   const matchesPlayed=p=>Number(p?.wins||0)+Number(p?.losses||0);
@@ -78,7 +84,7 @@
   // Allows a new profile to be created from Check-in and then returns the admin there.
   let returnToCheckinAfterPlayerAdd=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.42';
+  const APP_VERSION='1.43';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -638,8 +644,8 @@
   function draftTeamName(index){const c1=courtCountFor(pub.event,1),court=index<c1?1:2;return window.RallyTeamNames.slotLabel(court,court===1?index+1:index-c1+1,pub.event.team_naming_mode);}
   function teamById(teamId){return pub?.teams?.find(t=>t.id===teamId)||null;}
   function statusPill(text,cls=''){return `<span class="pill ${cls}">${safe(text)}</span>`;}
-  function render(){if(!pub)return;const currentSetup=document.getElementById('checkin-settings');if(currentSetup)setupExpanded=currentSetup.open;document.body.dataset.activeTab=tab;document.body.dataset.hasTeams=pub.teams?.length?'yes':'no';const e=pub.event;const teamsCount=e?totalTeamsFor(e):6;const utilTeams=$('#utility-team-count'),heroTeams=$('#hero-team-count');if(utilTeams)utilTeams.textContent=String(teamsCount);if(heroTeams)heroTeams.textContent=String(teamsCount).padStart(2,'0');$('#event-status').textContent=e?`${e.status==='open'?'CHECK-IN OPEN':'MATCHES IN PROGRESS'} · ${niceDate(e.date).toUpperCase()} · ROUND ${e.round_number||1}`:'VOLLEYBALL MATCHMAKER';$('#hero-title').innerHTML=e?`${safe(e.title)}<br/><em>${e.status==='open'?'Check-in underway.':'Game on.'}</em>`:'Everybody plays.<br/><em>Every point counts.</em>';$('#hero-description').textContent=e?`Two courts. ${formatCourtCounts(e)}. ${courtSizeLabel(e)} with fill-in substitutes when needed. Every team gets two games.`:'Follow live volleyball teams, rotations, and match scores on both courts.';$('#mode-indicator').textContent=demo?'DEMO MODE':'LIVE SYNC';$('#demo-banner').hidden=!(demo&&adminGranted);const mmrToggle=$('#mmr-visibility-toggle');if(mmrToggle){mmrToggle.hidden=!adminGranted;mmrToggle.textContent=showMmr?'👁 Hide MMR':'🙈 MMR hidden';mmrToggle.setAttribute('aria-pressed',String(showMmr));}const toggle=$('#demo-toggle');toggle.hidden=!adminGranted||!configured;toggle.textContent=demo?'✓ Demo active':'▶ Try demo';toggle.classList.toggle('demo-is-active',demo);toggle.setAttribute('aria-label',demo?'Demo mode active; return to live site':'Start demo mode');toggle.setAttribute('aria-pressed',String(demo));const exitDemo=document.querySelector('[data-action=exit-demo]');if(exitDemo)exitDemo.hidden=!configured;const demoHint=$('#demo-hint');if(demo&&demoHint)demoHint.textContent=pub?.event?.status==='locked'?`${pub.matches.filter(m=>m.winner_team_id).length} of ${totalMatchesFor(e)} practice matches complete. Simulate another result or use Live Courts to undo. Please note: demo changes never affect the live database.`:`${pub?.roster?.length||0} of ${pub?.event?.capacity||36} sample spots filled. Choose court settings in Check-in, then build teams.`;
-$('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').innerHTML=renderCourts();$('#who-body').innerHTML=renderPublicAttendance();$('#leaderboard-body').innerHTML=adminGranted?renderLeaderboard():'';$('#admin-body').innerHTML=renderAdmin();document.querySelectorAll('.live-score-form').forEach(form=>{if(scoreDrafts.has(form.dataset.match))updateScorePreview(form);});}
+  function render(){if(!pub)return;document.body.dataset.activeTab=tab;document.body.dataset.hasTeams=pub.teams?.length?'yes':'no';const e=pub.event;const teamsCount=e?totalTeamsFor(e):6;const utilTeams=$('#utility-team-count'),heroTeams=$('#hero-team-count');if(utilTeams)utilTeams.textContent=String(teamsCount);if(heroTeams)heroTeams.textContent=String(teamsCount).padStart(2,'0');$('#event-status').textContent=e?`${e.status==='open'?'CHECK-IN OPEN':'MATCHES IN PROGRESS'} · ${niceDate(e.date).toUpperCase()} · ROUND ${e.round_number||1}`:'VOLLEYBALL MATCHMAKER';$('#hero-title').innerHTML=e?`${safe(e.title)}<br/><em>${e.status==='open'?'Check-in underway.':'Game on.'}</em>`:'Everybody plays.<br/><em>Every point counts.</em>';$('#hero-description').textContent=e?`Two courts. ${formatCourtCounts(e)}. ${courtSizeLabel(e)} with fill-in substitutes when needed. Every team gets two games.`:'Follow live volleyball teams, rotations, and match scores on both courts.';$('#mode-indicator').textContent=demo?'DEMO MODE':'LIVE SYNC';$('#demo-banner').hidden=!(demo&&adminGranted);const mmrToggle=$('#mmr-visibility-toggle');if(mmrToggle){mmrToggle.hidden=!adminGranted;mmrToggle.textContent=showMmr?'👁 Hide MMR':'🙈 MMR hidden';mmrToggle.setAttribute('aria-pressed',String(showMmr));}const toggle=$('#demo-toggle');toggle.hidden=!adminGranted||!configured;toggle.textContent=demo?'✓ Demo active':'▶ Try demo';toggle.classList.toggle('demo-is-active',demo);toggle.setAttribute('aria-label',demo?'Demo mode active; return to live site':'Start demo mode');toggle.setAttribute('aria-pressed',String(demo));const exitDemo=document.querySelector('[data-action=exit-demo]');if(exitDemo)exitDemo.hidden=!configured;const demoHint=$('#demo-hint');if(demo&&demoHint)demoHint.textContent=pub?.event?.status==='locked'?`${pub.matches.filter(m=>m.winner_team_id).length} of ${totalMatchesFor(e)} practice matches complete. Simulate another result or use Live Courts to undo. Please note: demo changes never affect the live database.`:`${pub?.roster?.length||0} of ${pub?.event?.capacity||36} sample spots filled. Open Session Settings from Check-in, then build teams.`;
+$('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').innerHTML=renderCourts();$('#who-body').innerHTML=renderPublicAttendance();$('#leaderboard-body').innerHTML=adminGranted?renderLeaderboard():'';$('#admin-body').innerHTML=renderAdmin();document.querySelectorAll('.live-score-form').forEach(form=>{if(scoreDrafts.has(form.dataset.match))updateScorePreview(form);});syncSessionSettingsDialog();}
   // Public attendance is a deliberately limited display-name list. It never includes IDs,
   // MMR, wins/losses, gender, timestamps, player profiles, or write access.
   function safeCheckedInNames(){
@@ -667,20 +673,24 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   function renderSignup(){
     if(!adminGranted)return '';
     const e=pub.event;
-    const heading='<div class="section-top"><div><h2 id="signup-title" class="section-title">Matchday control center</h2><p class="section-sub">Set up the day, check in players, preview and publish teams — all in one place. Admin only.</p></div></div>';
-    const steps=`<nav class="matchday-steps" aria-label="Matchday progress">${[
-      ['1','Start session',!!e],['2','Check in',!!e&&e.status==='open'],
-      ['3','Review teams',!!e&&e.status==='open'&&!!currentDraft()],
-      ['4','Play & score',!!e&&e.status==='locked']
-    ].map(([number,name,active])=>`<span class="matchday-step ${active?'is-current':''}"><b>${number}</b>${name}</span>`).join('')}</nav>`;
+    const heading='<div class="section-top"><div><h2 id="signup-title" class="section-title">Matchday control center</h2><p class="section-sub">Start the day, check in players, create teams, and move smoothly through rounds. Your match options carry over. Admin only.</p></div></div>';
+    const draft=Boolean(e&&e.status==='open'&&currentDraft());
+    const phase=!e?1:e.status==='locked'?4:draft?3:2;
+    const steps=`<nav class="matchday-steps matchday-workflow" aria-label="Matchday progress">${[
+      ['1','Start day'],['2','Check in'],['3','Make teams'],['4','Play & score']
+    ].map(([number,name])=>`<span class="matchday-step ${Number(number)===phase?'is-current':''} ${Number(number)<phase?'is-done':''}" ${Number(number)===phase?'aria-current="step"':''}><b>${Number(number)<phase?'✓':number}</b>${name}</span>`).join('')}</nav>`;
     if(!e)return heading+steps+`<section class="panel admin-section checkin-session-start" id="checkin-start-session"><div class="panel-head"><h3>🏐 Start session</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Today's session opens check-in as soon as you start it. Keep the 6v6 defaults for a quick setup, or expand the court options.</p>${renderCreateForm()}</section>`;
     const stats=`<div class="stat-row"><div class="stat"><span class="value">${pub.roster.length}</span><span class="label">Here today</span></div><div class="stat highlight"><span class="value">${Math.max(0,e.capacity-pub.roster.length)}</span><span class="label">Spots to fill</span></div><div class="stat"><span class="value">${e.round_number||1}</span><span class="label">Current round</span></div></div>`;
     const count=pub.roster.length;
     const needed=minimumPlayersFor(e);
     const ready=e.status==='open'&&count>=needed&&count<=e.capacity;
-    const launch=e.status==='open'?`<section class="panel checkin-launch" aria-label="Next steps for today's session"><div class="checkin-launch-heading"><div><strong>✓ ${safe(e.title)} · Check-in open</strong><small>${courtSizeLabel(e)} · ${formatCourtCounts(e)} · ${count}/${e.capacity} players</small></div><span class="pill ${ready?'win':'wait'}">${ready?'Ready to preview':`${Math.max(0,needed-count)} more needed`}</span></div><label class="daily-ignore-mmr-toggle"><input type="checkbox" id="checkin-ignore-mmr-toggle" ${admin?.ignore_mmr===true?'checked':''} /><span><strong>Ignore MMR when creating teams</strong><small>Team sorting only · scoring still updates MMR</small></span></label><div class="checkin-launch-actions"><button class="btn btn-primary" type="button" data-action="checkin-preview-teams" ${ready?'':'disabled'}>⚡ Preview teams →</button><button class="btn btn-secondary" type="button" data-action="checkin-new-player">＋ New player</button><button class="btn btn-secondary" type="button" data-action="checkin-courts">⚙ Court settings</button></div><p class="subtle">${ready?`Ready to review ${totalTeamsFor(e)} teams${e.capacity>count?` with ${e.capacity-count} substitute ${e.capacity-count===1?'slot':'slots'}`:''}. Preview is private until you publish.`:count>e.capacity?'Too many players checked in for this setup. Remove absent attendees or increase the court capacity.':`Check in at least ${needed} players (one per team) before previewing.`}</p></section>`
-      :`<section class="panel checkin-launch"><div class="checkin-launch-heading"><div><strong>🏐 Games in progress</strong><small>Attendance locked while the round is active.</small></div></div><p class="subtle">${pub.matches.filter(m=>m.winner_team_id).length}/${totalMatchesFor(e)} matches recorded · Round ${e.round_number}</p><div class="checkin-launch-actions"><button type="button" class="btn btn-secondary" data-action="checkin-courts">View live scores →</button>${pub.matches.length===totalMatchesFor(e)&&pub.matches.every(m=>m.winner_team_id)?`<button type="button" class="btn btn-primary" data-action="next-round">↻ Archive round &amp; reopen check-in</button>`:''}</div></section>`;
-    return heading+steps+stats+launch+renderAttendance()+`<details class="matchday-settings-fold" id="checkin-settings" ${setupExpanded?'open':''}><summary>⚙ Configure session &amp; team rules <span>Team counts, sizes, scoring, MMR, position balance</span></summary>${renderSessionManagement()}</details>`;
+    const done=pub.matches.filter(m=>m.winner_team_id).length;
+    const target=totalMatchesFor(e);
+    const launch=e.status==='open'?`<section class="panel checkin-launch matchday-action-card" aria-label="Create match teams"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">${draft?'STEP 3 · PRIVATE TEAM PREVIEW':'STEP 2 · CHECK IN PLAYERS'}</span><strong>${draft?'🏐 Your team preview is ready':`✓ ${safe(e.title)} · ${count} checked in`}</strong><small>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · ${count}/${e.capacity} player spots · Round ${Number(e.round_number)||1}</small></div><span class="pill ${ready?'win':'wait'}">${ready?draft?'Ready to publish':'Ready to make teams':`${Math.max(0,needed-count)} more needed`}</span></div>
+      <div class="matchday-primary-actions">${draft?`<button class="btn btn-primary" type="button" data-action="checkin-review-teams">✓ Review &amp; publish teams →</button><button class="btn btn-secondary" type="button" data-action="checkin-preview-teams">↻ Reshuffle preview</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-preview-teams" ${ready?'':'disabled'}>⚡ Make teams for Round ${Number(e.round_number)||1}</button>`}<button class="btn btn-secondary" type="button" data-action="open-session-settings">⚙ Match options</button><button class="btn btn-secondary" type="button" data-action="checkin-new-player">＋ New player</button></div>
+      <p class="matchday-help">${draft?'Preview is admin-only. Review positions and teammates before publishing; publishing is the final confirmation.':ready?`Uses the options shown below and generates a private preview. ${count<e.capacity?`${e.capacity-count} substitute spots will be filled.`:''}`:`Check in at least ${needed} players. Positions here update automatically as players arrive.`}</p></section>`
+      :`<section class="panel checkin-launch matchday-action-card ${isRoundComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">STEP 4 · ${isRoundComplete()?'ROUND COMPLETE':'GAMES UNDERWAY'}</span><strong>${isRoundComplete()?'✅ All scores recorded — ready for new teams':'🏐 Teams are playing'}</strong><small>${done} of ${target} matches recorded · Round ${Number(e.round_number)||1} · Check-ins carry over</small></div><span class="pill ${isRoundComplete()?'win':'muted'}">${done}/${target} scored</span></div><div class="matchday-score-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${done}" aria-label="Recorded match results"><span style="width:${target?Math.round(100*done/target):0}%"></span></div><div class="matchday-primary-actions">${isRoundComplete()?`<button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options for next round</button>`:`<button type="button" class="btn btn-primary" data-action="checkin-courts">🔵🔴 View matches &amp; enter scores</button>`}</div><p class="matchday-help">${isRoundComplete()?'Next Teams archives the completed round, keeps every check-in, and prepares a fresh private preview with the same options. You will review before publishing.':'Record all scheduled results (or correct mistakes using Undo/Redo) before generating the next teams.'}</p></section>`;
+    return heading+steps+stats+launch+renderAttendance()+`<div class="checkin-settings-shortcut"><div><strong>⚙ Session rules</strong><span>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · Play to ${Number(e.target_score)||25}</span></div><button type="button" class="btn btn-secondary" data-action="open-session-settings">Change settings</button></div>`;
   }
   // Tier names and icons are PRESENTATION ONLY: ratings are still calculated by Supabase.
   // Challenger is awarded to the top 10 players in the OVERALL leaderboard, before position filtering.
@@ -845,6 +855,8 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       ...(adminGranted?[['checkin-settings','⚙ Session setup','']]:[])
     ];
     const quickNav=shortcuts.length?`<nav class="court-quick-nav" aria-label="Live Courts shortcuts">${shortcuts.map(([target,label,cls])=>`<button type="button" class="${cls}" data-action="court-jump" data-target="${target}">${label}</button>`).join('')}</nav>`:'';
+    const roundNextBanner=adminGranted&&isRoundComplete()?`<section class="round-next-banner" aria-label="Next round actions"><div><strong>✅ Round ${Number(e.round_number)||1} complete</strong><small>All ${totalMatchesFor(e)} scores saved. Everyone stays checked in for the next teams.</small></div><div><button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options</button></div></section>`:'';
+
     const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">${hasTeams?'Blue Court 1 · Red Court 2. Teams first, results and corrections below.':'Get ready for matchday: confirm attendance and publish the teams.'}</p></div><div class="live-courts-actions"><a class="btn btn-small btn-primary" href="./kiosk.html" aria-label="Open fullscreen community kiosk">▣ Tablet kiosk</a><button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>${quickNav}`;
     // Ratings belong ONLY to Live Courts, never to the Admin tab. Keep this block after scores.
     const privateTools=adminGranted?`<div class="courts-admin-section" id="court-admin-tools">${renderPrivateMatchRatings()}</div>`:'';
@@ -860,7 +872,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of ${matches.length} complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div>${scoreCorrectionPanel(court)}</section>`;
       return {roster,schedule};
     });
-    return `${title}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All ${pub.teams.length} teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>
+    return `${title}${roundNextBanner}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All ${pub.teams.length} teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>
       <div class="court-matches-heading"><h3>Live matches & results</h3><p>Target ${e.target_score||25} · Win by 2. ${canScore?'Enter final scores directly below each match.':'Follow the match order and final scores.'}</p></div>
       ${canScore?'<div class="courts-community-notice">🏐 <strong>Community scoring is on.</strong> Anyone can record final scores or use Undo/Redo. Double-check the court and teams before confirming.</div>':e.status==='locked'&&!demo?'<div class="courts-community-notice" role="alert">⚠ Public scoring is not available yet. Ask an admin to install the V1.32 Supabase SQL update.</div>':''}
       <div class="courts-layout courts-matches-layout">${groups.map(g=>g.schedule).join('')}</div>
@@ -949,20 +961,107 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const finishPanel=pub?.event?`<details class="admin-finish-session" id="admin-finish-session"><summary>🔐 Finish today's session <span>Protected · Admin only</span></summary><div class="panel admin-finish-panel"><h3>End today's matchday</h3><p>Session: <strong>${safe(pub.event.title)}</strong> · ${safe(niceDate(pub.event.date))} · Round ${pub.event.round_number}. Completing the session removes the live court schedule for visitors. Saved scores, player profiles, and MMR remain recorded.</p><p class="warning">Only finish after you're done playing for the day. To prevent accidental taps, you'll need to type FINISH to confirm.</p><button type="button" class="btn btn-danger" data-action="finish-session-confirm">Finish session securely</button></div></details>`:'';
     return `${header}${finishPanel}<div class="admin-grid"><div>${renderAddPlayerForm()}</div><div>${ratings}</div></div><details class="website-settings"><summary>🎨 Website appearance <span>Original / COS theme</span></summary>${brandPanel}</details>`;
   }
+  // V1.43: one-tap, accessible session settings. Each choice saves immediately.
+  function settingsChoice(setting,value,label,current,disabled=false,extra=''){
+    const selected=String(value)===String(current);
+    return `<button type="button" class="session-choice${selected?' is-selected':''}" data-action="settings-choice" data-setting="${safe(setting)}" data-value="${safe(value)}" aria-pressed="${selected}" ${disabled?'disabled':''} ${extra}>${safe(label)}${selected?'<span aria-hidden="true" class="session-choice-check">✓</span>':''}</button>`;
+  }
+  function settingsRow(label,buttons,note=''){
+    return `<div class="session-setting-row"><strong>${label}</strong><div class="session-choice-row">${buttons}</div>${note?`<small>${note}</small>`:''}</div>`;
+  }
   function renderSessionManagement(){
-    if(!adminGranted)return '';
-    const e=pub?.event;
-    if(!e)return `<section class="panel admin-section" id="court-admin-session"><div class="panel-head"><h3>🔒 Session management</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Start the session directly from the Check-in page. Your 6v6 defaults are ready there.</p><button type="button" class="btn btn-primary" data-action="checkin-start-session">🏐 Start session in Check-in →</button></section>`;
-    const slots=Math.max(0,e.capacity-pub.roster.length);const canGenerate=pub.roster.length>=minimumPlayersFor(e);const results=pub.matches.filter(m=>m.winner_team_id).length;const roundComplete=pub.matches.length===totalMatchesFor(e)&&results===totalMatchesFor(e);
-    const courtMode=e.court_mode==='split'?'split':'mixed';
-    const ignoreMmr=admin?.ignore_mmr===true;
-    const modeSelector=`<div class="court-mode-panel"><div class="court-mode-head"><strong>How should courts be organized?</strong><span class="small-caps">ADMIN SETTING</span></div>
-      <div class="court-mode-options" role="group" aria-label="Court organization">
-        <button type="button" class="court-mode-option ${courtMode==='mixed'?'is-selected':''}" data-action="court-mode" data-mode="mixed" aria-pressed="${courtMode==='mixed'}" ${e.status!=='open'?'disabled':''}><span class="court-mode-symbol">🏐</span><span><strong>Balanced mixed courts</strong><small>Default · Spread advanced players across both courts</small></span></button>
-        <button type="button" class="court-mode-option ${courtMode==='split'?'is-selected':''}" data-action="court-mode" data-mode="split" aria-pressed="${courtMode==='split'}" ${e.status!=='open'||ignoreMmr?'disabled':''}><span class="court-mode-symbol">🏆</span><span><strong>Competitive / beginner courts</strong><small>Court 1: stronger players · Court 2: beginner-friendly (needs MMR)</small></span></button>
-      </div><p class="subtle court-mode-footnote">${e.status==='open'?'You can switch before publishing teams. Teams are then balanced within the chosen court setup.':'Court mode is locked while teams are playing. Finish or reset the round to change it.'}</p></div>`;
-    const controls=`<section class="panel admin-section" id="court-admin-session"><div class="panel-head"><h3>⚙ Session management</h3>${statusPill(e.status==='open'?'Accepting players':'Matches live',e.status==='open'?'':'muted')}</div><div class="meta-line"><span>${safe(e.title)}</span><span>•</span><span>${safe(niceDate(e.date))}</span><span>•</span><span>${courtSizeLabel(e)}</span><span>•</span><span>To ${e.target_score||25} · Win by 2</span><span>•</span><span>Round ${e.round_number||1}</span><span>•</span><span>${pub.roster.length}/${e.capacity} checked in</span></div>${modeSelector}<div class="mixed-court-settings"><div class="mixed-court-settings-title"><strong>Team name style</strong><span class="small-caps">ADMIN ONLY</span></div><label for="team-naming-mode">Display teams as<select class="field" id="team-naming-mode" aria-label="Team name style"><option value="numbers" ${e.team_naming_mode!=='funny'?'selected':''}>Team 1–6 (default)</option><option value="funny" ${e.team_naming_mode==='funny'?'selected':''}>Funny volleyball names</option></select></label><p class="subtle">Numbered: Blue 1–3, Red 4–6. Funny: Block Party, Sets on the Beach, Dig Happens, Ace Ventura, Net Ninjas, The Volley Llamas. Changes appear for everyone, even mid-round; scores and MMR are unchanged.</p></div><div class="mixed-court-settings"><div class="mixed-court-settings-title"><strong>Players per team on each court</strong><span class="small-caps">ADMIN ONLY</span></div><div class="mixed-court-fields"><label>🔵 Court 1<select class="field" id="court-1-team-size" ${e.status!=='open'?'disabled':''}>${[2,3,4,5,6].map(n=>`<option value="${n}" ${courtSizeFor(e,1)===n?'selected':''}>${n}v${n}</option>`).join('')}</select></label><label>🔴 Court 2<select class="field" id="court-2-team-size" ${e.status!=='open'?'disabled':''}>${[2,3,4,5,6].map(n=>`<option value="${n}" ${courtSizeFor(e,2)===n?'selected':''}>${n}v${n}</option>`).join('')}</select></label></div><p class="subtle">${e.capacity} total spots · ${formatCourtCounts(e)}. Select both sizes before previewing; changes save together. Remove absent check-ins if the new capacity is smaller than attendance.</p></div><div class="mixed-court-settings"><div class="mixed-court-settings-title"><strong>Number of teams on each court</strong><span class="small-caps">ADMIN ONLY · 6v6</span></div><div class="mixed-court-fields"><label>🔵 Court 1<select class="field" id="court-1-team-count" ${e.status!=='open'?'disabled':''}>${[2,3].map(n=>`<option value="${n}" ${courtCountFor(e,1)===n?'selected':''}>${n} teams</option>`).join('')}</select></label><label>🔴 Court 2<select class="field" id="court-2-team-count" ${e.status!=='open'?'disabled':''}>${[2,3].map(n=>`<option value="${n}" ${courtCountFor(e,2)===n?'selected':''}>${n} teams</option>`).join('')}</select></label></div><p class="subtle">2 teams: repeat matchup twice. 3 teams: existing winner-stays rotation. Save before previewing teams. All changes are blocked after publishing.</p><button type="button" class="btn btn-primary btn-small" data-action="save-court-setup" ${e.status!=='open'?'disabled':''}>✓ Save court format (sizes + teams)</button><p class="subtle">One save handles both courts together. Capacity is validated before changes are sent.</p></div><div class="score-target-settings"><label for="score-target-select"><strong>Target points per match</strong><small>Win by 2. Deuce scores can exceed the target, up to 99.</small></label><select class="field" id="score-target-select" aria-label="Target score" ${e.status!=='open'?'disabled':''}>${[15,21,25].map(n=>`<option value="${n}" ${Number(e.target_score||25)===n?'selected':''}>${n} points</option>`).join('')}</select><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="gender-balance-toggle" ${admin?.gender_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance women across teams</strong><small>Optional · Distribute registered women across teams${ignoreMmr?' without using MMR':' while keeping MMR as a light tie-breaker'}. Unknown gender is not assumed.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel position-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="position-balance-toggle" ${admin?.position_balance===true?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Balance teams by volleyball position</strong><small>When ON, distribute specialists, assign 6v6 roles (1 Setter, 2 Outsides, 1 Opposite, 1 front-row Middle, 1 back-row Libero), and prioritize each player's primary position at least once per daily session when the rounds allow it. When OFF, generate teams without assigned roles or missing-specialist icons. ${ignoreMmr?'MMR is ignored.':'MMR is a lighter tie-breaker.'}</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="ignore-mmr-toggle" ${ignoreMmr?'checked':''} ${e.status!=='open'?'disabled':''} /><span><strong>Ignore MMR when creating teams</strong><small>${ignoreMmr?'Enabled: random starting order; positions, gender balance, and teammate history still matter.':'Default OFF: MMR is used lightly after other enabled balancing priorities.'} Match results continue updating MMR. Competitive/Beginner court separation requires MMR.</small></span></label><span class="small-caps">ADMIN ONLY</span></div><div class="gender-balance-panel visibility-panel"><label class="gender-balance-check"><input type="checkbox" id="show-player-positions-toggle" ${admin?.position_balance===true&&e.show_player_positions===true?'checked':''} ${admin?.position_balance===true?'':'disabled'} /><span><strong>Show primary &amp; secondary positions on Live Courts</strong><small>Optional, OFF by default. Only available when Balance teams by volleyball position is ON. Otherwise all position details are hidden from team rosters.</small></span></label><span class="small-caps">ADMIN ONLY</span></div>${e.status==='open'?`<p class="subtle">Settings save immediately. Your team preview automatically invalidates when attendance or settings change. Go to the Check-in controls above to generate a fresh preview.</p>`:`<p class="subtle">Round ${e.round_number}: ${results}/${totalMatchesFor(e)} matches completed. Court sizes, team counts and balancing options unlock for the next round.</p>${results===0?`<button type="button" class="btn btn-secondary btn-small" data-action="reset">↻ Reset unpublished results / reopen check-in</button>`:''}`}</section>`;
-    return controls;
+    if(!adminGranted||!pub?.event)return '<p class="subtle">No active session. Start today from Check-in.</p>';
+    const e=pub.event,open=e.status==='open',positions=admin?.position_balance===true,ignoreMmr=admin?.ignore_mmr===true;
+    const attending=(pub?.roster||[]).length;
+    const court=(c)=>{
+      const size=courtSizeFor(e,c),count=courtCountFor(e,c);
+      return `<section class="session-court-block session-court-${c}" aria-label="Court ${c} configuration"><div class="session-court-head"><strong>${c===1?'🔵 Blue Court 1':'🔴 Red Court 2'}</strong><span>${size*count} player spots</span></div>${settingsRow('Players per team',[2,3,4,5,6].map(n=>settingsChoice('size'+c,n,`${n}v${n}`,size,!open)).join(''))}${settingsRow('Teams per court',[2,3].map(n=>settingsChoice('count'+c,n,`${n} teams`,count,!open)).join(''))}</section>`;
+    };
+    const mode=e.court_mode==='split'?'split':'mixed';
+    const section=(name,contents,note='')=>`<section class="session-settings-group"><h3>${name}</h3>${contents}${note?`<p class="session-settings-note">${note}</p>`:''}</section>`;
+    const yesNo=(key,current,disabled=false)=>settingsChoice(key,'true','On',current,disabled)+settingsChoice(key,'false','Off',current,disabled);
+    return `<div class="session-settings-overview"><strong>${safe(e.title)}</strong><span>${safe(niceDate(e.date))} · Round ${Number(e.round_number)||1} · ${attending}/${e.capacity} checked in</span><span class="${open?'session-open':'session-locked'}">${open?'● Changes save automatically':'🔒 Team settings locked while matches are live'}</span></div>
+      ${section('Court format',`<div class="session-court-grid">${court(1)}${court(2)}</div><p class="session-capacity-note">${e.capacity} total player spots · ${totalTeamsFor(e)} teams · ${totalMatchesFor(e)} matches per round</p>`, 'Court sizes and team counts take effect as soon as you tap a choice. Reducing capacity below today’s check-ins is blocked.')}
+      ${section('Match & court rules',settingsRow('Target score',[15,21,25].map(n=>settingsChoice('score',n,`${n} points`,Number(e.target_score)||25,!open)).join(''),'Win by two points.')+settingsRow('Court balancing',settingsChoice('mode','mixed','🏐 Mixed',mode,!open)+settingsChoice('mode','split','🏆 Competitive / beginner',mode,!open||ignoreMmr),'Competitive / beginner courts require MMR.'))}
+      ${section('Team balancing',settingsRow('Balance by volleyball position',yesNo('positions',positions,!open),'When off, assigned positions and missing-specialist icons stay hidden.')+settingsRow('Balance women across teams',yesNo('gender',admin?.gender_balance===true,!open))+settingsRow('Ignore MMR for team creation',yesNo('mmr',ignoreMmr,!open),'Scores still update MMR. This only changes team sorting.'))}
+      ${section('Display',settingsRow('Team names',settingsChoice('name','numbers','Team 1–6',e.team_naming_mode||'numbers')+settingsChoice('name','funny','Funny names',e.team_naming_mode||'numbers'),'Blue uses Team 1–3; Red uses Team 4–6.')+settingsRow('Show primary / secondary preferences on Live Courts',yesNo('prefVisibility',e.show_player_positions===true,!positions),'Available only with position balancing enabled.'))}
+      ${!open?`<p class="session-settings-note">${isRoundComplete()?'All matches are complete. Choose Next round · Edit rules to archive the results and unlock these options.':'Complete all match scores to unlock settings for the next round.'} Finish Session remains protected under Admin.</p>`:''}`;
+  }
+  function updateSessionDialogFooter(){
+    const footer=document.querySelector('#checkin-settings .session-dialog-footer');
+    if(!footer)return;
+    const e=pub?.event,ready=e?.status==='open'&&(pub?.roster?.length||0)>=minimumPlayersFor(e)&&(pub?.roster?.length||0)<=e.capacity;
+    const complete=isRoundComplete();
+    footer.innerHTML=`<span>${e?.status==='open'?'✓ Changes save instantly. No Save button required.':complete?'✓ All scores recorded. Check-ins and your rules will carry over.':'🔒 Court rules can be changed between rounds.'}</span><div class="session-dialog-actions">${e?.status==='open'?`<button type="button" class="btn btn-primary btn-small" data-action="dialog-make-teams" ${ready?'':'disabled'}>⚡ Make teams</button>`:complete?`<button type="button" class="btn btn-primary btn-small" data-action="next-round-customize">Next round · Edit rules</button>`:''}<button type="button" class="btn btn-secondary btn-small" data-action="close-session-settings">Close</button></div>`;
+  }
+  function syncSessionSettingsDialog(){
+    const dialog=document.getElementById('checkin-settings');
+    if(!dialog?.open)return;
+    if(!adminGranted||!pub?.event){dialog.close();return;}
+    const body=dialog.querySelector('#session-dialog-content');
+    if(!body)return;
+    const scroll=body.scrollTop;
+    const focused=dialog.contains(document.activeElement)?document.activeElement:null;
+    const setting=focused?.dataset?.setting,value=focused?.dataset?.value;
+    body.innerHTML=renderSessionManagement();
+    updateSessionDialogFooter();
+    body.scrollTop=scroll;
+    if(setting!==undefined){
+      const match=[...body.querySelectorAll('[data-action="settings-choice"]')].find(x=>x.dataset.setting===setting&&x.dataset.value===value);
+      match?.focus({preventScroll:true});
+    }
+  }
+  function openSessionSettings(){
+    if(!adminGranted||!pub?.event)return;
+    const dialog=document.getElementById('checkin-settings');
+    if(!dialog)return;
+    if(!dialog.open){dialog.showModal();}
+    syncSessionSettingsDialog();
+    dialog.querySelector('.session-dialog-close')?.focus({preventScroll:true});
+  }
+  async function applySessionChoice(setting,value){
+    if(!adminGranted||!pub?.event||mutating)return;
+    const e=pub.event,open=e.status==='open';
+    const sizes=[courtSizeFor(e,1),courtSizeFor(e,2)],counts=[courtCountFor(e,1),courtCountFor(e,2)];
+    if(['size1','size2','count1','count2'].includes(setting)){
+      if(!open)return;
+      const index=Number(setting.slice(-1))-1,n=Number(value);
+      if(setting.startsWith('size')){if(!Number.isInteger(n)||n<2||n>6)return;sizes[index]=n;}
+      else{if(![2,3].includes(n))return;counts[index]=n;}
+      const capacity=sizes[0]*counts[0]+sizes[1]*counts[1];
+      if(capacity<(pub?.roster||[]).length){flash(`That choice has ${capacity} spots, but ${(pub?.roster||[]).length} people are checked in. Remove absent players or increase another court first.`,true);return;}
+      const same=setting.startsWith('size')?sizes.every((n,i)=>n===courtSizeFor(e,i+1)):counts.every((n,i)=>n===courtCountFor(e,i+1));
+      if(same)return;
+      const saved=await act(()=>setting.startsWith('size')?api.setCourtSizes(e.id,...sizes):api.setCourtTeamCounts(e.id,...counts),`Saved: Blue ${sizes[0]}v${sizes[0]} × ${counts[0]} teams; Red ${sizes[1]}v${sizes[1]} × ${counts[1]} teams. ${capacity} spots.`);
+      if(saved){discardDraft();draftStale=true;}
+      else await refresh(true);
+      return;
+    }
+    if(setting==='name'){
+      if(!['numbers','funny'].includes(value)||e.team_naming_mode===value)return;
+      await act(()=>api.setTeamNamingMode(e.id,value),value==='funny'?'Funny names now displayed.':'Numbered team names now displayed.');return;
+    }
+    if(setting==='prefVisibility'){
+      if(admin?.position_balance!==true)return;
+      const enabled=value==='true';if(e.show_player_positions===enabled)return;
+      await act(()=>api.setShowPlayerPositions(e.id,enabled),enabled?'Player preferences now shown on Live Courts.':'Player preferences hidden from Live Courts.');return;
+    }
+    if(!open)return;
+    if(setting==='mode'){
+      if(!['mixed','split'].includes(value)||e.court_mode===value)return;
+      if(value==='split'&&admin?.ignore_mmr===true){flash('Competitive / beginner court mode needs MMR enabled.',true);return;}
+      await act(()=>api.setCourtMode(e.id,value),'Court balancing updated.');return;
+    }
+    if(setting==='score'){
+      const n=Number(value);if(![15,21,25].includes(n)||Number(e.target_score||25)===n)return;
+      await act(()=>api.setTargetScore(e.id,n),`Matches now play to ${n}, win by two.`);return;
+    }
+    const enabled=value==='true';
+    if(!['gender','positions','mmr'].includes(setting))return;
+    const current=setting==='gender'?admin?.gender_balance===true:setting==='positions'?admin?.position_balance===true:admin?.ignore_mmr===true;
+    if(current===enabled)return;
+    const jobs={gender:()=>api.setGenderBalance(e.id,enabled),positions:()=>api.setPositionBalance(e.id,enabled),mmr:()=>api.setIgnoreMmr(e.id,enabled)};
+    await act(jobs[setting],`${setting==='gender'?'Gender balance':setting==='positions'?'Position balance':'Ignore MMR'} ${enabled?'enabled':'disabled'}.`);
   }
   function renderPrivateMatchRatings(){
     if(!adminGranted || !pub?.event)return '';
@@ -970,7 +1069,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const finished=pub.matches.filter(m=>m.winner_team_id).sort((a,b)=>(a.completed_seq||0)-(b.completed_seq||0));
     return `<section class="panel admin-private-results" id="live-private-results" aria-label="Admin-only match ratings"><div class="panel-head"><h3>🔒 Private match ratings</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Exact MMR changes after each match. These final MMR values are visible only to approved admins on Live Courts. Only approved admins receive these values.</p>${finished.length?`<div class="private-result-grid">${finished.map(m=>`<article class="private-result"><div class="private-result-head"><strong>Court ${m.court} · Match ${m.order}</strong><span>${safe(teamName(teamById(m.winner_team_id)))} won ${m.score_a}–${m.score_b}</span></div>${matchRatingDetails(m,teamById(m.team_a_id),teamById(m.team_b_id))}</article>`).join('')}</div>`:'<p class="subtle">Record a final score above to see each player’s MMR change and final rating for that match.</p>'}</section>`;
   }
-  function renderCreateForm(){return `<form id="create-form" class="form-stack checkin-create-form"><div class="session-quick-fields"><div><label class="label-input" for="new-title">Session name</label><input class="field" id="new-title" name="title" value="Open Volleyball" required minlength="3" maxlength="70" /></div><div><label class="label-input" for="new-date">Daily session date · Colorado</label><input class="field" id="new-date" name="date" type="date" value="${localDate()}" readonly required /><small class="subtle">One session per calendar day; yesterday’s check-ins never carry over.</small></div></div><div id="create-session-summary" class="session-format-summary" role="status" aria-live="polite">🏐 Default: 6v6 · 3 teams on each court · 36 player spots · Numbered teams</div><details class="session-advanced-settings"><summary>⚙ Customize court format <span>Optional · 6v6, teams per court, funny names</span></summary><div class="session-advanced-fields"><div class="mixed-court-settings"><strong>Players per team</strong><div class="mixed-court-fields"><label for="new-size">🔵 Blue Court<select class="field" name="size" id="new-size">${[2,3,4,5,6].map(n=>`<option value="${n}" ${n===6?'selected':''}>${n}v${n}</option>`).join('')}</select></label><label for="new-size-2">🔴 Red Court<select class="field" name="size2" id="new-size-2">${[2,3,4,5,6].map(n=>`<option value="${n}" ${n===6?'selected':''}>${n}v${n}</option>`).join('')}</select></label></div></div><div class="mixed-court-settings"><strong>Teams per court</strong><div class="mixed-court-fields"><label for="new-count-1">🔵 Blue Court<select class="field" name="count1" id="new-count-1">${[2,3].map(n=>`<option value="${n}" ${n===3?'selected':''}>${n} teams</option>`).join('')}</select></label><label for="new-count-2">🔴 Red Court<select class="field" name="count2" id="new-count-2">${[2,3].map(n=>`<option value="${n}" ${n===3?'selected':''}>${n} teams</option>`).join('')}</select></label></div></div><div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="new-ignore-mmr" name="ignoreMmr" /><span><strong>Ignore MMR when creating teams</strong><small>OFF by default. Sort using enabled position/gender balancing and prior teammates; scores still update ratings.</small></span></label></div><div class="mixed-court-settings"><label for="new-team-names"><strong>Team names</strong><select class="field" id="new-team-names" name="namingMode"><option value="numbers" selected>Team 1–6 (default)</option><option value="funny">Funny volleyball names</option></select></label><p class="subtle">Blue Court uses Team 1–3; Red Court uses Team 4–6. You can switch names later.</p></div></div></details><button type="submit" class="btn btn-primary btn-full">▶ Start or resume today’s session</button><p class="subtle checkin-create-note">Today’s check-ins stay through every round. Tomorrow starts with a fresh attendance list; saved ratings and results remain.</p></form>`;}
+  function renderCreateForm(){return `<form id="create-form" class="form-stack checkin-create-form"><div class="session-quick-fields"><div><label class="label-input" for="new-title">Session name</label><input class="field" id="new-title" name="title" value="Open Volleyball" required minlength="3" maxlength="70" /></div><div><label class="label-input" for="new-date">Daily session date · Colorado</label><input class="field" id="new-date" name="date" type="date" value="${localDate()}" readonly required /><small class="subtle">One session per calendar day; yesterday’s check-ins never carry over.</small></div></div><div class="session-start-presets" role="group" aria-label="Quick court format"><strong>Quick formats</strong><button type="button" class="session-start-preset is-selected" data-action="create-format-preset" data-counts="3,3" aria-pressed="true">6v6 · 36 players</button><button type="button" class="session-start-preset" data-action="create-format-preset" data-counts="2,3" aria-pressed="false">6v6 · 30 players</button><button type="button" class="session-start-preset" data-action="create-format-preset" data-counts="2,2" aria-pressed="false">6v6 · 24 players</button></div><div id="create-session-summary" class="session-format-summary" role="status" aria-live="polite">🏐 Default: 6v6 · 3 teams on each court · 36 player spots · Numbered teams</div><details class="session-advanced-settings"><summary>⚙ Customize court format <span>Optional · 6v6, teams per court, funny names</span></summary><div class="session-advanced-fields"><div class="mixed-court-settings"><strong>Players per team</strong><div class="mixed-court-fields"><label for="new-size">🔵 Blue Court<select class="field" name="size" id="new-size">${[2,3,4,5,6].map(n=>`<option value="${n}" ${n===6?'selected':''}>${n}v${n}</option>`).join('')}</select></label><label for="new-size-2">🔴 Red Court<select class="field" name="size2" id="new-size-2">${[2,3,4,5,6].map(n=>`<option value="${n}" ${n===6?'selected':''}>${n}v${n}</option>`).join('')}</select></label></div></div><div class="mixed-court-settings"><strong>Teams per court</strong><div class="mixed-court-fields"><label for="new-count-1">🔵 Blue Court<select class="field" name="count1" id="new-count-1">${[2,3].map(n=>`<option value="${n}" ${n===3?'selected':''}>${n} teams</option>`).join('')}</select></label><label for="new-count-2">🔴 Red Court<select class="field" name="count2" id="new-count-2">${[2,3].map(n=>`<option value="${n}" ${n===3?'selected':''}>${n} teams</option>`).join('')}</select></label></div></div><div class="gender-balance-panel"><label class="gender-balance-check"><input type="checkbox" id="new-ignore-mmr" name="ignoreMmr" /><span><strong>Ignore MMR when creating teams</strong><small>OFF by default. Sort using enabled position/gender balancing and prior teammates; scores still update ratings.</small></span></label></div><div class="mixed-court-settings"><label for="new-team-names"><strong>Team names</strong><select class="field" id="new-team-names" name="namingMode"><option value="numbers" selected>Team 1–6 (default)</option><option value="funny">Funny volleyball names</option></select></label><p class="subtle">Blue Court uses Team 1–3; Red Court uses Team 4–6. You can switch names later.</p></div></div></details><button type="submit" class="btn btn-primary btn-full">▶ Start or resume today’s session</button><p class="subtle checkin-create-note">Today’s check-ins stay through every round. Tomorrow starts with a fresh attendance list; saved ratings and results remain.</p></form>`;}
   function updateCreateSessionSummary(){
     const form=$('#create-form'),summary=$('#create-session-summary');
     if(!form||!summary)return;
@@ -981,6 +1080,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const mode=form.elements.namedItem('namingMode')?.value==='funny'?'Funny names':'Numbered teams';
     const mmr=form.elements.namedItem('ignoreMmr')?.checked?'Ignore MMR':'MMR tie-breaker';
     summary.textContent=`🏐 Blue: ${size1}v${size1} × ${count1} teams · Red: ${size2}v${size2} × ${count2} teams · ${size1*count1+size2*count2} player spots · ${mode} · ${mmr}`;
+    form.querySelectorAll('[data-action="create-format-preset"]').forEach(button=>{const selected=size1===6&&size2===6&&button.dataset.counts===`${count1},${count2}`;button.classList.toggle('is-selected',selected);button.setAttribute('aria-pressed',String(selected));});
   }
   function renderPlayerRatings(currentOnly){
     const all=admin?.players||[];const e=pub.event;const activeSet=new Set(pub.roster.map(p=>p.id));
@@ -1003,6 +1103,26 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     return `<div class="form-stack"><label class="label-input" for="player-search">Find player</label><input class="field" id="player-search" type="search" placeholder="Search any name" value="${safe(searchText)}" autocomplete="off"/><div class="profile-list-meta"><strong class="profile-count" id="profile-result-count">${searchText.trim()?`${count} matching ${count===1?'player':'players'}`:`Showing ${visible.length} of ${arr.length} players`}</strong>${showToggle}</div></div><div class="admin-roster" id="profile-results" style="margin-top:15px">${playerCards||'<p class="subtle">No matching player profiles.</p>'}</div>`;
   }
   async function act(job,message){if(mutating)return false;mutating=true;try{await job();flash(message);await refresh();announceChange(message==='Website theme saved for everyone.'?'theme':'state');return true;}catch(e){flash(errText(e),true);return false;}finally{mutating=false;}}
+  async function startNextTeams(customize=false){
+    if(!adminGranted||mutating||!isRoundComplete()){
+      flash('Finish every scheduled match before starting the next round.',true);return;
+    }
+    const eventId=pub.event.id,previousRound=Number(pub.event.round_number)||1;
+    const message=`Archive round ${previousRound} and open round ${previousRound+1}?\n\nAll ${totalMatchesFor(pub.event)} results are complete. Scores, MMR, and player check-ins remain saved.\n\n${customize?'You can choose new match options next.':'A fresh private team preview will be generated using the same match options.'}\n\nNothing will be published until you review and confirm.`;
+    if(!confirm(message))return;
+    document.getElementById('checkin-settings')?.close();
+    const success=await act(()=>api.nextRound(eventId),`Round ${previousRound} archived. Check-ins preserved; round ${previousRound+1} is open.`);
+    // Only continue with the matching next-round state. Another device may have moved it.
+    if(!success||!pub?.event||pub.event.id!==eventId||pub.event.status!=='open'||Number(pub.event.round_number)!==previousRound+1)return;
+    discardDraft();lockManualSwaps();draftStale=false;
+    switchTab('signup');
+    if(customize){openSessionSettings();flash('Choose any new options; each tap saves automatically. Then tap Make teams.');return;}
+    if((pub.roster||[]).length<minimumPlayersFor(pub.event)){
+      flash('Round started. Check in enough players before making teams.',true);return;
+    }
+    switchTab('courts');
+    await handleGenerate();
+  }
   async function handleGenerate(){
     const e=pub?.event;
     if(!adminGranted||!admin||!e||e.status!=='open')return;
@@ -1078,11 +1198,31 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'demo-generate':if(demo)await demoBuildTeams();break;
     case 'demo-score':if(demo)await demoScoreNext();break;
     case 'refresh':await refresh();break;
+    case 'open-session-settings':openSessionSettings();break;
+    case 'dialog-make-teams':if(adminGranted&&pub?.event?.status==='open'){
+      document.getElementById('checkin-settings')?.close();
+      switchTab('courts');await handleGenerate();
+    }break;
+    case 'next-teams-fast':await startNextTeams(false);break;
+    case 'next-round-customize':await startNextTeams(true);break;
+    case 'checkin-review-teams':if(adminGranted&&currentDraft()){
+      switchTab('courts');document.getElementById('team-draft-container')?.scrollIntoView({behavior:'smooth',block:'start'});
+    }break;
+
+    case 'create-format-preset':{
+      const form=btn.closest('#create-form'),counts=btn.dataset.counts?.split(',').map(Number);
+      if(!form||counts?.length!==2||counts.some(n=>![2,3].includes(n)))break;
+      form.elements.namedItem('size').value='6';form.elements.namedItem('size2').value='6';
+      form.elements.namedItem('count1').value=String(counts[0]);form.elements.namedItem('count2').value=String(counts[1]);
+      updateCreateSessionSummary();break;
+    }
+    case 'close-session-settings':document.getElementById('checkin-settings')?.close();break;
+    case 'settings-choice':{if(!btn.closest('#checkin-settings')||btn.disabled)break;await applySessionChoice(btn.dataset.setting,btn.dataset.value);break;}
     case 'toggle-mmr':if(adminGranted){showMmr=!showMmr;render();flash(showMmr?'MMR now visible. Hide it again before sharing your screen.':'MMR values hidden from this screen.');}break;
-    case 'go-checkin-settings':if(adminGranted){switchTab('signup');const d=document.getElementById('checkin-settings');if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});}}break;
+    case 'go-checkin-settings':if(adminGranted)openSessionSettings();break;
     case 'view-attendance':switchTab('who');break;
     case 'checkin-start-session':if(adminGranted&&!pub?.event){switchTab('signup');$('#new-title')?.focus({preventScroll:true});}break;
-    case 'checkin-courts':if(adminGranted){switchTab('signup');const d=document.getElementById('checkin-settings');if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});}}break;
+    case 'checkin-courts':if(adminGranted){if(pub?.event?.status==='locked')switchTab('courts');else openSessionSettings();}break;
     case 'checkin-new-player':if(adminGranted){returnToCheckinAfterPlayerAdd=true;switchTab('admin');$('#add-name')?.focus({preventScroll:true});}break;
     case 'checkin-preview-teams':if(adminGranted&&pub?.event?.status==='open'){
       if(pub.roster.length<minimumPlayersFor(pub.event)||pub.roster.length>pub.event.capacity){flash('Check-in is not ready for preview yet.',true);break;}
@@ -1099,7 +1239,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'court-jump':{
       if(tab!=='courts')switchTab('courts');
       const target=btn.dataset.target;
-      if(target==='checkin-settings'){switchTab('signup');const d=document.getElementById(target);if(d){d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'});}break;}
+      if(target==='checkin-settings'){openSessionSettings();break;}
       const allowed=['court-team-rosters','court-1-matches','court-2-matches','court-1-corrections','court-2-corrections','live-private-results','court-admin-session'];
       if(!allowed.includes(target) || (['live-private-results','court-admin-session'].includes(target)&&!adminGranted))break;
       document.getElementById(target)?.scrollIntoView({behavior:'smooth',block:'start'});
@@ -1141,52 +1281,6 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
         siteBrand=data==='cos'?'cos':'rallyrank';applyBrand(siteBrand);
       },'Website theme saved for everyone.');
       if(ok)render();
-      break;
-    }
-    case 'save-court-setup':{
-      if(!adminGranted||pub?.event?.status!=='open')break;
-      const e=pub.event;
-      const size1=Number($('#court-1-team-size')?.value),size2=Number($('#court-2-team-size')?.value),
-            count1=Number($('#court-1-team-count')?.value),count2=Number($('#court-2-team-count')?.value);
-      if(![size1,size2].every(n=>Number.isInteger(n)&&n>=2&&n<=6)||![count1,count2].every(n=>[2,3].includes(n))){
-        flash('Select valid court sizes (2–6) and team counts (2–3).',true);break;
-      }
-      const total=size1*count1+size2*count2,attending=pub.roster.length;
-      if(total<attending){flash(`That format only holds ${total} players but ${attending} are checked in. Remove absent players first.`,true);break;}
-      const oldSizes=[courtSizeFor(e,1),courtSizeFor(e,2)],oldCounts=[courtCountFor(e,1),courtCountFor(e,2)];
-      const changeSizes=oldSizes[0]!==size1||oldSizes[1]!==size2;
-      const changeCounts=oldCounts[0]!==count1||oldCounts[1]!==count2;
-      if(!changeSizes&&!changeCounts){flash('Court format is already up to date.');break;}
-      const sizesFirst=size1*oldCounts[0]+size2*oldCounts[1]>=attending;
-      const countsFirst=oldSizes[0]*count1+oldSizes[1]*count2>=attending;
-      if(changeSizes&&changeCounts&&!sizesFirst&&!countsFirst){flash('Cannot safely change both settings while this many players are checked in. Reduce attendance first.',true);break;}
-      const saved=await act(async()=>{
-        const steps=changeSizes&&changeCounts?(sizesFirst?['size','count']:['count','size']):changeSizes?['size']:['count'];
-        for(const step of steps){if(step==='size')await api.setCourtSizes(e.id,size1,size2);else await api.setCourtTeamCounts(e.id,count1,count2);}
-      },`Saved court setup: Blue ${size1}v${size1} × ${count1} teams; Red ${size2}v${size2} × ${count2} teams. ${total} spots.`);
-      if(!saved)await refresh(true);
-      else{discardDraft();draftStale=true;}
-      break;
-    }
-    case 'save-court-sizes':{
-      if(!adminGranted||pub?.event?.status!=='open')break;
-      const size1=Number(document.querySelector('#court-1-team-size')?.value);
-      const size2=Number(document.querySelector('#court-2-team-size')?.value);
-      if(![size1,size2].every(n=>Number.isInteger(n)&&n>=2&&n<=6)){flash('Select a team size between 2 and 6 for each court.',true);break;}
-      if(size1===courtSizeFor(pub.event,1)&&size2===courtSizeFor(pub.event,2)){flash('Court sizes already match the selected values.');break;}
-      if(pub.roster.length>courtCountFor(pub.event,1)*size1+courtCountFor(pub.event,2)*size2){flash(`There are ${pub.roster.length} checked-in players but only ${courtCountFor(pub.event,1)*size1+courtCountFor(pub.event,2)*size2} team spots. Remove absent players from Check-In first.`,true);break;}
-      await act(()=>api.setCourtSizes(pub.event.id,size1,size2),`Court 1 set to ${size1}v${size1}; Court 2 set to ${size2}v${size2}.`);
-      break;
-    }
-    case 'save-court-team-counts':{
-      if(!adminGranted||pub?.event?.status!=='open')break;
-      const a=Number(document.querySelector('#court-1-team-count')?.value),b=Number(document.querySelector('#court-2-team-count')?.value);
-      if(![a,b].every(n=>[2,3].includes(n))){flash('Select 2 or 3 teams per court.',true);break;}
-      if(a===courtCountFor(pub.event,1)&&b===courtCountFor(pub.event,2)){flash('Court team counts already match.');break;}
-      const capacity=a*courtSizeFor(pub.event,1)+b*courtSizeFor(pub.event,2);
-      if(pub.roster.length>capacity){flash(`Remove absent check-ins before reducing capacity to ${capacity}.`,true);break;}
-      const saved=await act(()=>api.setCourtTeamCounts(pub.event.id,a,b),`Court 1: ${a} teams; Court 2: ${b} teams. Capacity: ${capacity}.`);
-      if(saved){discardDraft();draftStale=true;}
       break;
     }
     case 'court-mode':{if(!adminGranted||pub?.event?.status!=='open')break;const mode=btn.dataset.mode;if(!['mixed','split'].includes(mode))break;if(mode==='split'&&admin?.ignore_mmr===true){flash('Competitive / Beginner courts need MMR. Turn off Ignore MMR first.',true);break;}await act(()=>api.setCourtMode(pub.event.id,mode),mode==='mixed'?'Balanced mixed courts selected.':'Competitive / beginner courts selected.');break;}
@@ -1243,7 +1337,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     }
     case 'checkin-player':{const player=admin.players.find(p=>p.id===btn.dataset.player);await act(()=>api.checkIn(btn.dataset.player),`${player?.name||'Player'} checked in.`);break;}
     case 'remove-signup':{const player=admin.players.find(p=>p.id===btn.dataset.player);if(confirm(`Remove ${player?.name||'this player'} from the current signup? Their MMR will be kept.`))await act(()=>api.removeSignup(pub.event.id,btn.dataset.player),'Player removed from this signup.');break;}
-    case 'next-round':if(confirm(`Archive all ${totalMatchesFor(pub.event)} completed matches and make new teams for another round? Check-ins and today’s results will be preserved.`))await act(()=>api.nextRound(pub.event.id),'Round archived. Today’s check-ins are still here; generate the next teams when ready.');break;
+    case 'next-round':await startNextTeams(false);break;
     case 'reset':if(confirm('Erase team assignments and reopen check-in? No results can be recorded.'))await act(()=>api.resetRound(pub.event.id),'Teams reset. You can rebalance and publish again.');break;
     case 'finish-session-confirm':{
       if(!adminGranted||tab!=='admin'||!btn.closest('.admin-finish-session')||!pub?.event)break;
