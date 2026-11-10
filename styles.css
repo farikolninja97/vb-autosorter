@@ -1091,8 +1091,8 @@ html[data-theme=dark] .daily-ignore-mmr-toggle{background:var(--panel2,#1b2b3d)}
 @media(max-width:600px){.daily-ignore-mmr-toggle{font-size:12px;padding:9px}}
 
 /* V1.42 - matchday flow, consistent position badges and admin privacy */
-.mmr-privacy-toggle{border:1px solid #bdcbdc;background:#e5edf9;color:#143b61;padding:9px 12px;border-radius:10px;font-weight:850;font-size:12px;min-height:42px;white-space:nowrap}
-.mmr-privacy-toggle[aria-pressed="true"]{background:#fff0dc;border-color:#e1aa56;color:#78420b}
+
+
 .matchday-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:0 0 18px}
 .matchday-step{min-width:0;border:1px solid var(--border,#ccd6e4);background:var(--panel,#fff);border-radius:10px;padding:10px 8px;display:flex;align-items:center;gap:8px;color:var(--muted,#67798e);font-size:12px;font-weight:800}
 .matchday-step b{display:grid;place-items:center;width:25px;height:25px;flex:none;border-radius:7px;background:#e5ebf3;color:#526680}
@@ -1114,9 +1114,9 @@ html[data-theme=dark] .daily-ignore-mmr-toggle{background:var(--panel2,#1b2b3d)}
 .team-member-name{display:block}.mmr-concealed-label{font-size:11px;color:var(--muted,#607187);font-weight:700}
 html[data-theme="dark"] .matchday-step.is-current{background:#144337;border-color:#329f80;color:#c0ffed}
 html[data-theme="dark"] .matchday-settings-fold>summary,html[data-theme="dark"] .admin-finish-panel{color:var(--text,#fff)}
-html[data-theme="dark"] .mmr-privacy-toggle{background:#26364b;border-color:#58708d;color:#e3f0ff}
-html[data-theme="dark"] .mmr-privacy-toggle[aria-pressed="true"]{background:#5b4320;color:#ffe1a4}
-@media(max-width:650px){.matchday-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.matchday-step{font-size:11px;padding:8px}.mmr-privacy-toggle{font-size:11px;padding:8px}.matchday-settings-fold>summary{align-items:flex-start;flex-direction:column}}
+
+
+@media(max-width:650px){.matchday-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.matchday-step{font-size:11px;padding:8px}.matchday-settings-fold>summary{align-items:flex-start;flex-direction:column}}
 
 /* V1.43 — fast, accessible one-tap admin session-settings dialog */
 .session-settings-dialog{width:min(820px,calc(100vw - 24px));max-width:820px;max-height:min(92dvh,940px);margin:auto;padding:0;border:1px solid var(--border,#cbd5e1);border-radius:18px;background:var(--panel,#fff);color:var(--text,#172a47);box-shadow:0 30px 90px #041a39aa;overflow:hidden}
