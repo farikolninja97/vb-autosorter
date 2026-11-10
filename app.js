@@ -30,6 +30,28 @@
   const capacityFor=event=>courtCountFor(event,1)*courtSizeFor(event,1)+courtCountFor(event,2)*courtSizeFor(event,2);
   const totalMatchesFor=event=>[1,2].reduce((sum,c)=>sum+(courtCountFor(event,c)===2?2:3),0);
   const minimumPlayersFor=event=>totalTeamsFor(event);
+  const MAX_DAILY_CHECKINS=96;
+  const overflowEnabled=()=>adminGranted&&pub?.event?.overflow_enabled===true;
+  const canCheckInMore=()=>Boolean(pub?.event?.status==='open' &&
+    (pub.roster||[]).length<(overflowEnabled()?MAX_DAILY_CHECKINS:pub.event.capacity));
+  // Shuffle every time a new team preview is generated: no fixed overflow waitlist.
+  function drawRoundPlayers(roster,capacity,allowOverflow){
+    const people=[...(roster||[])];
+    if(!allowOverflow||people.length<=capacity)return {selected:people.slice(0,capacity),overflow:[]};
+    for(let i=people.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[people[i],people[j]]=[people[j],people[i]];}
+    return {selected:people.slice(0,capacity),overflow:people.slice(capacity)};
+  }
+  function publishedOverflowNames(){
+    if(pub?.event?.status!=='locked'||!pub?.teams?.length)return [];
+    // Public state already exposes names-only attendance; never reveal MMR/profile data.
+    const names=Array.isArray(pub.checked_in_names)&&pub.checked_in_names.length?pub.checked_in_names:(pub.roster||[]).map(p=>p.name);
+    const playing=new Set(pub.teams.flatMap(team=>(team.players||[]).filter(p=>!p.is_placeholder).map(p=>String(p.name).trim().toLocaleLowerCase())));
+    return names.filter(name=>!playing.has(String(name).trim().toLocaleLowerCase())).sort((a,b)=>String(a).localeCompare(String(b)));
+  }
+  function renderPublishedOverflow(){
+    const names=publishedOverflowNames();
+    return names.length?`<section class="overflow-group overflow-group-published" aria-label="Overflow players not on courts this round"><h3>⏳ Overflow · ${names.length} waiting this round</h3><p>These checked-in players are not assigned to a court this round. A fresh random draw will be made when the next teams are created.</p><div class="overflow-names">${names.map(name=>`<span>${safe(name)}</span>`).join('')}</div></section>`:'';
+  }
   // Only completed published matches are eligible for round advancement.
   function isRoundComplete(){
     const e=pub?.event;
@@ -83,12 +105,15 @@
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   // Allows a new profile to be created from Check-in and then returns the admin there.
   let returnToCheckinAfterPlayerAdd=false;
+  // Sorting may take several seconds on older tablets. Make the progress
+  // message visible before the CPU-heavy matcher starts.
+  let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.46';
+  const APP_VERSION='1.47';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
-  let pendingTeams=null, pendingTeamsKey=null, draftSelection=null, draftStale=false;
+  let pendingTeams=null, pendingOverflow=[], pendingTeamsKey=null, draftSelection=null, draftStale=false;
   // Hidden, admin-only convenience feature. Five taps on the Team Preview title
   // within four seconds toggles the local, pre-publish roster swap editor.
   // This is a UI easter egg, NOT an authorization boundary: RPCs still check admins.
@@ -106,14 +131,14 @@
     updateDraftView();
     flash(manualSwapUnlocked?'Secret roster editor unlocked. Select two players to swap before publishing.':'Roster editor locked.');
   }
-  function discardDraft(){pendingTeams=null;pendingTeamsKey=null;draftSelection=null;}
+  function discardDraft(){pendingTeams=null;pendingOverflow=[];pendingTeamsKey=null;draftSelection=null;}
   function draftFingerprint(){
     if(!pub?.event||!admin?.players)return '';
-    const roster=priorityRoster().slice(0,pub.event.capacity);
+    const roster=priorityRoster();
     const byId=new Map(admin.players.map(p=>[p.id,p]));
     return JSON.stringify({session:pub.event.id,round:pub.event.round_number,status:pub.event.status,
       size:pub.event.team_size,size2:courtSizeFor(pub.event,2),counts:[courtCountFor(pub.event,1),courtCountFor(pub.event,2)],mode:pub.event.court_mode,gender:admin.gender_balance===true,
-      positions:admin.position_balance===true,ignoreMmr:admin.ignore_mmr===true,history:admin.previous_teams||[],roleHistory:admin.session_role_history||{},
+      positions:admin.position_balance===true,ignoreMmr:admin.ignore_mmr===true,overflow:pub.event.overflow_enabled===true,history:admin.previous_teams||[],roleHistory:admin.session_role_history||{},
       selected:roster.map(r=>{const p=byId.get(r.id);return [r.id,r.checked_at,r.rounds_played,p?.name,p?.mmr,p?.position,p?.secondary_position,p?.gender];})});
   }
   function currentDraft(){
@@ -212,6 +237,7 @@
     return `<section class="team-draft" aria-label="Unpublished team preview">
       <div class="team-draft-head"><div><span class="draft-label">ADMIN ONLY · NOT PUBLISHED</span><h3><button type="button" class="draft-secret-trigger" data-action="draft-secret-tap" aria-label="Team Preview">Team Preview</button></h3>${manualSwapUnlocked?'<p class="draft-unlocked-note">🔓 Manual roster editing unlocked. Tap <strong>Select</strong>, then <strong>Swap here</strong> on another player or substitute slot. Tap the Team Preview title five more times to hide editing.</p>':`<p>Review the ${groups.length} suggested teams and their assignments, then publish or generate another set.</p>`}</div><div class="draft-head-actions"><button type="button" class="btn btn-small btn-secondary draft-mmr-toggle" data-action="toggle-mmr" aria-pressed="${showMmr}" aria-label="${showMmr?'Hide MMR in team preview':'Show MMR in team preview'}">${showMmr?'🙈 Hide MMR':'👁 Show MMR'}</button><span class="draft-changes">Nothing goes live until you publish.</span></div></div>
       ${admin?.position_balance===true?'<div class="draft-role-legend" aria-label="Position assignment color key"><span><i class="role-key-primary"></i>Primary</span><span><i class="role-key-secondary"></i>Secondary</span><span><i class="role-key-autofilled"></i>Autofilled</span></div>':''}
+      ${pendingOverflow.length?`<section class="overflow-group overflow-group-preview" aria-label="Overflow players for the proposed round"><h4>⏳ Overflow · ${pendingOverflow.length} waiting this round</h4><p>Drawn randomly for this preview. Tap Generate different teams to make a new draw; everyone stays checked in.</p><div class="overflow-names">${pendingOverflow.map(p=>`<span>${safe(p.name)}</span>`).join('')}</div></section>`:''}
       <div class="draft-summary"><strong>${!showMmr?'🔒 MMR hidden':`${admin?.ignore_mmr===true?'MMR ignored for sorting · ':''}Average MMR spread: ${safe(window.RallyMath.spread(groups))}`}</strong><span>${groups.flat().filter(p=>p.is_placeholder).length} unrated sub slots</span>${admin.gender_balance===true?`<span>Women per team: ${groups.map(g=>g.filter(p=>!p.is_placeholder&&p.gender==='Woman').length).join(' / ')}</span>`:''}${preferredRoleProgress(groups)}</div>
       ${sel?`<div class="draft-selected" role="status">Selected: <strong>${safe(draftMemberLabel(sel))}</strong> · Court ${draftSelection.team<courtCountFor(pub.event,1)?1:2}, ${safe(draftTeamName(draftSelection.team))}. Pick another roster slot to swap. <button type="button" class="btn btn-small btn-secondary" data-action="draft-cancel-selection">Cancel selection</button></div>`:''}
       <div class="draft-courts">${[1,2].map(court=>`<section class="draft-court draft-court-${court}" aria-label="Draft Court ${court}"><h4>${court===1?'🔵':'🔴'} Court ${court} · ${courtSizeFor(pub.event,court)}v${courtSizeFor(pub.event,court)}</h4><div class="draft-teams ${courtCountFor(pub.event,court)===2?'two-team-layout':''}">${groups.slice(court===1?0:courtCountFor(pub.event,1),court===1?courtCountFor(pub.event,1):totalTeamsFor(pub.event)).map((team,index)=>{
@@ -284,8 +310,8 @@
     try{Promise.resolve(syncChannel.send({type:'broadcast',event:'changed',payload:{kind}})).catch(()=>{});}catch(e){}
   }
   const SAMPLE=[['Alex R.',1460],['Sam D.',1190],['Taylor P.',1030],['Jordan C.',1260],['Morgan B.',910],['Casey G.',1080],['Avery K.',1350],['Riley F.',980],['Jamie L.',820],['Drew T.',1240],['Parker M.',1110],['Cameron S.',1020],['Quinn V.',950],['Reese H.',1380],['Hayden W.',1160],['Blake E.',860],['Rowan A.',1300],['Dakota N.',1000],['Skyler J.',1140],['Kendall O.',930],['Finley Z.',1490],['Marley U.',940],['Emerson Q.',1050],['Robin I.',1220],['Nico J.',1100],['Sydney Y.',940],['Alexis N.',1310],['Ari V.',1180],['Mia P.',1010],['Noah B.',975],['Lena V.',1030],['Mateo L.',1005],['Sofia C.',950],['Eli T.',1065],['Nina G.',990],['Leo H.',1125],['Isla M.',1045],['Owen R.',1000],['Zoe A.',970],['Max P.',1230],['Jules K.',1510],['Kai W.',980],['Ivy S.',1030],['Chris U.',940]];
-  function seedDemo(){return {event:{id:id(),title:'Open Volleyball',date:localDate(),team_size:6,court2_team_size:6,court_1_team_count:3,court_2_team_count:3,court_mode:'mixed',gender_balance:false,position_balance:false,show_player_positions:false,team_naming_mode:'numbers',ignore_mmr:false,target_score:25,round_number:1,duration_minutes:180,status:'open'},archives:[],players:SAMPLE.map(([name,mmr],i)=>({id:id(),name,mmr,position:POSITIONS[1+i%6],secondary_position:POSITIONS[1+(i+2)%6],wins:0,losses:0,gender:['Man','Woman','Man','Woman','Man','Nonbinary','Woman','Unspecified'][i%8]})),signups:[],teams:[],matches:[],history:[],redo_scores:[]};}
-  function readDemo(){try{const s=localStorage.getItem('rallyrank-demo-v107');if(s){demoData=JSON.parse(s);demoData.archives||=[];demoData.redo_scores||=[];demoData.players.forEach((p,i)=>{p.position=normalizePosition(p.position);p.secondary_position=normalizePosition(p.secondary_position);if(!GENDERS.includes(p.gender))p.gender=['Woman','Man','Man','Woman','Unspecified','Nonbinary'][i%6];});(demoData.teams||[]).forEach(t=>(t.players||[]).forEach(p=>{p.assigned_position=normalizeAssignedPosition(p.assigned_position);}));if(demoData.event){demoData.event.round_number||=1;demoData.event.duration_minutes=180;demoData.event.court_mode||='mixed';demoData.event.gender_balance??=false;demoData.event.position_balance??=false;demoData.event.show_player_positions??=false;demoData.event.target_score??=25;demoData.event.court2_team_size??=demoData.event.team_size;demoData.event.court_1_team_count??=3;demoData.event.court_2_team_count??=3;demoData.event.team_naming_mode=window.RallyTeamNames.mode(demoData.event.team_naming_mode);demoData.event.ignore_mmr??=false;
+  function seedDemo(){return {event:{id:id(),title:'Open Volleyball',date:localDate(),team_size:6,court2_team_size:6,court_1_team_count:3,court_2_team_count:3,court_mode:'mixed',gender_balance:true,position_balance:false,show_player_positions:false,team_naming_mode:'numbers',ignore_mmr:false,overflow_enabled:false,target_score:25,round_number:1,duration_minutes:180,status:'open'},archives:[],players:SAMPLE.map(([name,mmr],i)=>({id:id(),name,mmr,position:POSITIONS[1+i%6],secondary_position:POSITIONS[1+(i+2)%6],wins:0,losses:0,gender:['Man','Woman','Man','Woman','Man','Nonbinary','Woman','Unspecified'][i%8]})),signups:[],teams:[],matches:[],history:[],redo_scores:[]};}
+  function readDemo(){try{const s=localStorage.getItem('rallyrank-demo-v107');if(s){demoData=JSON.parse(s);demoData.archives||=[];demoData.redo_scores||=[];demoData.players.forEach((p,i)=>{p.position=normalizePosition(p.position);p.secondary_position=normalizePosition(p.secondary_position);if(!GENDERS.includes(p.gender))p.gender=['Woman','Man','Man','Woman','Unspecified','Nonbinary'][i%6];});(demoData.teams||[]).forEach(t=>(t.players||[]).forEach(p=>{p.assigned_position=normalizeAssignedPosition(p.assigned_position);}));if(demoData.event){demoData.event.round_number||=1;demoData.event.duration_minutes=180;demoData.event.court_mode||='mixed';demoData.event.gender_balance??=true;demoData.event.position_balance??=false;demoData.event.show_player_positions??=false;demoData.event.target_score??=25;demoData.event.court2_team_size??=demoData.event.team_size;demoData.event.court_1_team_count??=3;demoData.event.court_2_team_count??=3;demoData.event.team_naming_mode=window.RallyTeamNames.mode(demoData.event.team_naming_mode);demoData.event.ignore_mmr??=false;demoData.event.overflow_enabled??=false;
         // Demo attendance follows the same Colorado daily session boundary as live.
         // Local practice data can be restarted without touching Supabase.
         if(!isTodayEvent(demoData.event)){
@@ -326,7 +352,7 @@
       if(redoError)return {...state,redo_scores:[],scoreActionsAvailable:false};
       return {...state,redo_scores:Array.isArray(redo)?redo:[],scoreActionsAvailable:true};
     },
-    async getAdmin(){if(demo)return {...demoState(),players:demoData.players,match_changes:demoData.matches.flatMap(m=>(m.mmr_changes||[]).map(c=>({...c,match_id:m.id}))),previous_teams:demoData.archives.flatMap(a=>a.teams.map(t=>t.players.map(p=>p.id))),session_role_history:demoData.archives.reduce((history,round)=>{for(const team of round.teams||[])for(const p of team.players||[]){if(p.is_placeholder||!p.assigned_position)continue;(history[p.id]||=[]).push(p.assigned_position);}return history;},{}),redo_scores:demoData.redo_scores||[],gender_balance:demoData.event?.gender_balance===true,position_balance:demoData.event?.position_balance===true,show_player_positions:demoData.event?.show_player_positions===true,ignore_mmr:demoData.event?.ignore_mmr===true};
+    async getAdmin(){if(demo)return {...demoState(),players:demoData.players,match_changes:demoData.matches.flatMap(m=>(m.mmr_changes||[]).map(c=>({...c,match_id:m.id}))),previous_teams:demoData.archives.flatMap(a=>a.teams.map(t=>t.players.map(p=>p.id))),session_role_history:demoData.archives.reduce((history,round)=>{for(const team of round.teams||[])for(const p of team.players||[]){if(p.is_placeholder||!p.assigned_position)continue;(history[p.id]||=[]).push(p.assigned_position);}return history;},{}),redo_scores:demoData.redo_scores||[],gender_balance:demoData.event?.gender_balance===true,position_balance:demoData.event?.position_balance===true,show_player_positions:demoData.event?.show_player_positions===true,ignore_mmr:demoData.event?.ignore_mmr===true,overflow_enabled:demoData.event?.overflow_enabled===true};
       const {data,error}=await db.rpc('vmm_get_admin_state');if(error)throw error;
       const state=await api.getCourtCounts(data);
       const [{data:changes,error:changesError},{data:redo,error:redoError},{data:preferences,error:preferencesError},{data:roleHistory,error:roleHistoryError}]=await Promise.all([
@@ -340,8 +366,12 @@
       if(preferencesError)throw Error(`V1.40 Supabase migration required: ${preferencesError.message}`);
       if(roleHistoryError)throw Error(`V1.42 Supabase migration required: ${roleHistoryError.message}`);
       const current=isTodayEvent(state?.event);
-      return {...state,...(!current?{event:null,roster:[],teams:[],matches:[],previous_teams:[]}:{}),ignore_mmr:preferences?.ignore_mmr===true,session_role_history:current?(roleHistory||{}):{},match_changes:changes||[],redo_scores:redo||[],scoreActionsAvailable:true};},
+      return {...state,...(current?{event:{...state.event,overflow_enabled:preferences?.overflow_enabled===true}}:{event:null,roster:[],teams:[],matches:[],previous_teams:[]}),ignore_mmr:preferences?.ignore_mmr===true,session_role_history:current?(roleHistory||{}):{},match_changes:changes||[],redo_scores:redo||[],scoreActionsAvailable:true};},
     async addPlayer(name,tier,position,checkIn,gender='Unspecified',secondaryPosition='Unspecified',customMmr=null){
+      // A new profile is always allowed, but an automatic check-in must never
+      // silently overflow today's published team capacity.
+      if(checkIn&&pub?.event?.status==='open'&&!canCheckInMore())
+        throw Error('All team spots are filled. Create the profile without checking them in, or remove an absent player first.');
       if(tier==='custom'&&(!Number.isInteger(customMmr)||customMmr<500||customMmr>2500))throw Error('Custom MMR must be a whole number between 500 and 2500.');
       if(demo)return demoAction(()=>{
       const clean=name.trim().replace(/\s+/g,' ');
@@ -349,21 +379,29 @@
       if(!(Object.hasOwn(PRESETS,tier)||tier==='custom')||!POSITIONS.includes(position)||!POSITIONS.includes(secondaryPosition)||!GENDERS.includes(gender))throw Error('Choose valid primary/secondary positions and gender.');
       if(demoData.players.some(p=>p.name.toLocaleLowerCase()===clean.toLocaleLowerCase()))throw Error('Player already exists. Use their profile below.');
       if(checkIn&&demoData.event?.status!=='open')throw Error('Open a session before checking players in.');
-      if(checkIn&&demoData.signups.length>=96)throw Error('Signup limit reached.');
+      if(checkIn&&demoData.signups.length>=(demoData.event?.overflow_enabled===true?MAX_DAILY_CHECKINS:capacityFor(demoData.event)))throw Error('Daily check-in limit reached.');
       const p={id:id(),name:clean,mmr:tier==='custom'?customMmr:PRESETS[tier],position,secondary_position:secondaryPosition,gender,wins:0,losses:0};demoData.players.push(p);
       if(checkIn)demoData.signups.push({player_id:p.id,checked_at:new Date().toISOString()});
     });
       const rpc=tier==='custom'?'vmm_admin_add_player_custom':'vmm_admin_add_player';
       const args={p_name:name,p_position:position,p_check_in:checkIn,p_gender:gender,p_secondary_position:secondaryPosition};
       if(tier==='custom')args.p_mmr=customMmr;else args.p_tier=tier;
+      if(checkIn&&overflowEnabled()){
+        const {error}=await db.rpc('vmm_overflow_add_player',{
+          p_name:name,p_tier:tier==='custom'?'intermediate':tier,p_position:position,
+          p_gender:gender,p_secondary_position:secondaryPosition,p_mmr:tier==='custom'?customMmr:null
+        });if(error)throw error;return;
+      }
       const {error}=await db.rpc(rpc,args);if(error)throw error;},
-    async checkIn(pid){if(demo)return demoAction(()=>{
+    async checkIn(pid){
+      if(pub?.event?.status==='open'&&!canCheckInMore())throw Error('Attendance is full. Enable Overflow Players under Match Options or remove an absent player.');
+      if(demo)return demoAction(()=>{
       if(demoData.event?.status!=='open')throw Error('Signups are not open.');
       if(!demoData.players.some(p=>p.id===pid))throw Error('Player not found.');
       if(demoData.signups.some(s=>s.player_id===pid))throw Error('Player already checked in.');
-      if(demoData.signups.length>=96)throw Error('Signup limit reached.');
+      if(demoData.signups.length>=(demoData.event?.overflow_enabled===true?MAX_DAILY_CHECKINS:capacityFor(demoData.event)))throw Error('Daily check-in limit reached.');
       demoData.signups.push({player_id:pid,checked_at:new Date().toISOString()});
-    });const {error}=await db.rpc('vmm_admin_check_in_player',{p_player_id:pid});if(error)throw error;},
+    });const {error}=await db.rpc(overflowEnabled()?'vmm_overflow_check_in_player':'vmm_admin_check_in_player',{p_player_id:pid});if(error)throw error;},
     // Names are separate from other profile settings: never rewrite an ID, rating or match.
     async renamePlayer(pid,newName){
       const clean=String(newName??'').trim().replace(/\s+/g,' ');
@@ -398,8 +436,18 @@
     });
       const {error}=await db.rpc('vmm_admin_delete_player',{p_player_id:pid});if(error)throw error;
     },
-    async createEvent(title,date,size,size2=size,count1=3,count2=3,namingMode='numbers',ignoreMmr=false){if(date!==localDate())throw Error('Daily sessions must use today’s Colorado date.');if(!['numbers','funny'].includes(namingMode))throw Error('Choose a valid team naming style.');if(![count1,count2].every(n=>[2,3].includes(n)))throw Error('Choose 2 or 3 teams per court.');if(demo)return demoAction(()=>{if(demoData.event&&isTodayEvent(demoData.event))return;demoData.event={id:id(),title,date,team_size:size,court2_team_size:size2,court_1_team_count:count1,court_2_team_count:count2,team_naming_mode:namingMode,ignore_mmr:ignoreMmr,court_mode:'mixed',gender_balance:false,position_balance:false,show_player_positions:false,target_score:25,round_number:1,duration_minutes:180,status:'open'};demoData.signups=[];demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.redo_scores=[];demoData.archives=[];});const args={p_title:title,p_court1_size:size,p_court2_size:size2,p_court1_teams:count1,p_court2_teams:count2,p_team_naming_mode:namingMode,p_ignore_mmr:Boolean(ignoreMmr)};
+    async createEvent(title,date,size,size2=size,count1=3,count2=3,namingMode='numbers',ignoreMmr=false){if(date!==localDate())throw Error('Daily sessions must use today’s Colorado date.');if(!['numbers','funny'].includes(namingMode))throw Error('Choose a valid team naming style.');if(![count1,count2].every(n=>[2,3].includes(n)))throw Error('Choose 2 or 3 teams per court.');if(demo)return demoAction(()=>{if(demoData.event&&isTodayEvent(demoData.event))return;demoData.event={id:id(),title,date,team_size:size,court2_team_size:size2,court_1_team_count:count1,court_2_team_count:count2,team_naming_mode:namingMode,ignore_mmr:ignoreMmr,overflow_enabled:false,court_mode:'mixed',gender_balance:true,position_balance:false,show_player_positions:false,target_score:25,round_number:1,duration_minutes:180,status:'open'};demoData.signups=[];demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.redo_scores=[];demoData.archives=[];});const args={p_title:title,p_court1_size:size,p_court2_size:size2,p_court1_teams:count1,p_court2_teams:count2,p_team_naming_mode:namingMode,p_ignore_mmr:Boolean(ignoreMmr)};
       const {error}=await db.rpc('vmm_start_daily_event',args);if(error)throw error;},
+    async setOverflowMode(eventId,enabled){
+      if(typeof enabled!=='boolean')throw Error('Choose On or Off for overflow players.');
+      if(demo)return demoAction(()=>{
+        const e=demoData.event;
+        if(e?.id!==eventId||e.status!=='open')throw Error('Change overflow settings between rounds.');
+        if(!enabled&&demoData.signups.length>capacityFor(e))throw Error('Remove extra check-ins before turning overflow off.');
+        e.overflow_enabled=enabled;
+      });
+      const {error}=await db.rpc('vmm_admin_set_overflow_mode',{p_event_id:eventId,p_enabled:enabled});if(error)throw error;
+    },
     async setIgnoreMmr(eventId,enabled){
       if(typeof enabled!=='boolean')throw Error('Invalid MMR sorting setting.');
       if(enabled&&pub?.event?.court_mode==='split')throw Error('Choose Balanced Mixed Courts before ignoring MMR.');
@@ -419,10 +467,10 @@
       if(![size1,size2].every(n=>Number.isInteger(n)&&n>=2&&n<=6))throw Error('Select 2–6 players per team on each court.');
       if(demo)return demoAction(()=>{
         if(demoData.event?.id!==eventId||demoData.event.status!=='open')throw Error('Change court sizes before publishing teams.');
-        if(demoData.signups.length>courtCountFor(demoData.event,1)*size1+courtCountFor(demoData.event,2)*size2)throw Error('Remove absent check-ins before reducing available team spots.');
+        if(!demoData.event.overflow_enabled&&demoData.signups.length>courtCountFor(demoData.event,1)*size1+courtCountFor(demoData.event,2)*size2)throw Error('Remove absent check-ins before reducing available team spots.');
         demoData.event.team_size=size1;demoData.event.court2_team_size=size2;
       });
-      const {error}=await db.rpc('vmm_set_court_sizes',{p_event_id:eventId,p_court1_size:size1,p_court2_size:size2});
+      const {error}=await db.rpc(overflowEnabled()?'vmm_overflow_set_format':'vmm_set_court_sizes',overflowEnabled()?{p_event_id:eventId,p_size1:size1,p_size2:size2,p_count1:courtCountFor(pub.event,1),p_count2:courtCountFor(pub.event,2)}:{p_event_id:eventId,p_court1_size:size1,p_court2_size:size2});
       if(error)throw error;
     },
     async setCourtTeamCounts(eventId,count1,count2){
@@ -431,10 +479,10 @@
         const e=demoData.event;
         if(e?.id!==eventId||e.status!=='open')throw Error('Change team counts before publishing.');
         if(demoData.teams.length)throw Error('Reset the current round before changing teams.');
-        if(demoData.signups.length>count1*courtSizeFor(e,1)+count2*courtSizeFor(e,2))throw Error('Remove excess check-ins before reducing the number of teams.');
+        if(!e.overflow_enabled&&demoData.signups.length>count1*courtSizeFor(e,1)+count2*courtSizeFor(e,2))throw Error('Remove excess check-ins before reducing the number of teams.');
         e.court_1_team_count=count1;e.court_2_team_count=count2;
       });
-      const {error}=await db.rpc('vmm_admin_set_court_team_counts',{p_event_id:eventId,p_court_1_team_count:count1,p_court_2_team_count:count2});
+      const {error}=await db.rpc(overflowEnabled()?'vmm_overflow_set_format':'vmm_admin_set_court_team_counts',overflowEnabled()?{p_event_id:eventId,p_size1:courtSizeFor(pub.event,1),p_size2:courtSizeFor(pub.event,2),p_count1:count1,p_count2:count2}:{p_event_id:eventId,p_court_1_team_count:count1,p_court_2_team_count:count2});
       if(error)throw error;
     },
     async setCourtMode(eventId,mode){
@@ -484,6 +532,10 @@
       const args={p_event_id:eventId,p_teams:groups.map(g=>g.map(p=>p.id))};
       if(positionAware||totalTeamsFor(pub.event)<6)args.p_positions=groups.map(g=>g.map(p=>p.assigned_position||null));
       if(totalTeamsFor(pub.event)===6&&!positionAware){delete args.p_positions;}
+      if(pub.event.overflow_enabled===true&&(pub.roster||[]).length>pub.event.capacity){
+        args.p_positions=positionAware?groups.map(g=>g.map(p=>p.assigned_position||null)):null;
+        const {error}=await db.rpc('vmm_publish_overflow_teams',args);if(error)throw error;return;
+      }
       if(totalTeamsFor(pub.event)===6&&!positionAware){const {error}=await db.rpc('vmm_publish_teams',args);if(error)throw error;return;}
       const {error}=await db.rpc(rpc,args);if(error)throw error;},
     async report(mid,winner,scoreA,scoreB){if(demo)return demoAction(()=>{const m=demoData.matches.find(m=>m.id===mid);if(!m||m.winner_team_id||!m.team_a_id||!m.team_b_id)throw Error('Match is not ready.');if(demoData.matches.some(x=>x.court===m.court&&x.order<m.order&&!x.winner_team_id))throw Error('Previous court match is unfinished.');window.RallyMath.validateFinalScore(scoreA,scoreB,demoData.event.target_score||25);if(winner!==(scoreA>scoreB?m.team_a_id:m.team_b_id))throw Error('Winning team does not match the score.');const winning=demoData.teams.find(t=>t.id===winner),losing=demoData.teams.find(t=>t.id===(winner===m.team_a_id?m.team_b_id:m.team_a_id));if(!winning||!losing)throw Error('Invalid winner.');const delta=window.RallyMath.matchSwing(average(winning),average(losing),scoreA,scoreB);const changes=[],ratingChanges=[];for(const [team,win] of [[winning,true],[losing,false]])for(const tp of team.players.filter(p=>!p.is_placeholder)){const p=demoData.players.find(x=>x.id===tp.id);changes.push({id:p.id,mmr:p.mmr,wins:p.wins,losses:p.losses});const adjusted=delta*(placementLeft(p)>0?PLACEMENT_MULTIPLIER:1);p.mmr=Math.max(500,Math.min(2500,p.mmr+(win?adjusted:-adjusted)));if(win)p.wins++;else p.losses++;ratingChanges.push({player_id:p.id,player_name:p.name,team_id:team.id,before_mmr:changes.at(-1).mmr,after_mmr:p.mmr,delta:p.mmr-changes.at(-1).mmr});}m.mmr_changes=ratingChanges;m.winner_team_id=winner;m.score_a=scoreA;m.score_b=scoreB;m.completed_seq=Math.max(0,...demoData.matches.map(x=>Number(x.completed_seq)||0))+1;demoData.redo_scores=(demoData.redo_scores||[]).filter(x=>x.court!==m.court);demoData.history.push({mid,changes});if(m.order===1){const match2=demoData.matches.find(x=>x.court===m.court&&x.order===2),match3=demoData.matches.find(x=>x.court===m.court&&x.order===3);if(match2){match2.team_a_id=winner;if(!match3)match2.team_b_id=losing.id;}if(match3)match3.team_a_id=losing.id;}});const {error}=await db.rpc('vmm_report_result',{p_match_id:mid,p_winner_team_id:winner,p_score_a:scoreA,p_score_b:scoreB});if(error)throw error;},
@@ -637,14 +689,10 @@
   }
   async function demoBuildTeams(){
     if(!demo||!pub?.event)return;
-    if(pub.event.status!=='open'){flash('Teams are already published. Start a new practice scenario to build again.');switchTab('courts');return;}
-    const players=priorityRoster().slice(0,pub.event.capacity).map(p=>admin.players.find(x=>x.id===p.id));
-    if(players.length<minimumPlayersFor(pub.event)){flash(`Check in at least ${minimumPlayersFor(pub.event)} sample players first.`,true);return;}
-    const groups=window.RallyMath.makeTeams(players,[courtSizeFor(pub.event,1),courtSizeFor(pub.event,2)],admin.previous_teams||[],pub.event.court_mode==='split'?'split':'mixed',{balanceWomen:admin.gender_balance===true,balancePositions:admin.position_balance===true,ignoreMmr:admin.ignore_mmr===true,courtTeamCounts:[courtCountFor(pub.event,1),courtCountFor(pub.event,2)],roleHistory:admin.session_role_history||{}});
-    pendingTeams=groups;pendingTeamsKey=draftFingerprint();lockManualSwaps();draftStale=false;
-    switchTab('courts');
-    document.getElementById('team-draft-container')?.scrollIntoView({behavior:'smooth',block:'start'});
-    flash('Demo teams ready for review. Publish or generate another lineup.');
+    if(pub.event.status!=='open'){flash('Teams are already published. Finish this practice round to make new teams.');switchTab('courts');return;}
+    // Use the exact same path as the real Check-in action, including busy
+    // feedback, capacity safeguards, balancing options and preview validation.
+    await handleGenerate();
   }
   async function demoScoreNext(){
     if(!demo||!pub?.event)return;
@@ -708,15 +756,15 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       ['1','Start day'],['2','Check in'],['3','Make teams'],['4','Play & score']
     ].map(([number,name])=>`<span class="matchday-step ${Number(number)===phase?'is-current':''} ${Number(number)<phase?'is-done':''}" ${Number(number)===phase?'aria-current="step"':''}><b>${Number(number)<phase?'✓':number}</b>${name}</span>`).join('')}</nav>`;
     if(!e)return heading+steps+`<section class="panel admin-section checkin-session-start" id="checkin-start-session"><div class="panel-head"><h3>🏐 Start session</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Today's session opens check-in as soon as you start it. Keep the 6v6 defaults for a quick setup, or expand the court options.</p>${renderCreateForm()}</section>`;
-    const stats=`<div class="stat-row"><div class="stat"><span class="value">${pub.roster.length}</span><span class="label">Here today</span></div><div class="stat highlight"><span class="value">${Math.max(0,e.capacity-pub.roster.length)}</span><span class="label">Spots to fill</span></div><div class="stat"><span class="value">${e.round_number||1}</span><span class="label">Current round</span></div></div>`;
+    const stats=`<div class="stat-row"><div class="stat"><span class="value">${pub.roster.length}</span><span class="label">Here today</span></div><div class="stat highlight"><span class="value">${pub.roster.length>e.capacity?pub.roster.length-e.capacity:Math.max(0,e.capacity-pub.roster.length)}</span><span class="label">${pub.roster.length>e.capacity?'Overflow this round':'Spots to fill'}</span></div><div class="stat"><span class="value">${e.round_number||1}</span><span class="label">Current round</span></div></div>`;
     const count=pub.roster.length;
     const needed=minimumPlayersFor(e);
-    const ready=e.status==='open'&&count>=needed&&count<=e.capacity;
+    const ready=e.status==='open'&&count>=needed&&(count<=e.capacity||e.overflow_enabled===true);
     const done=pub.matches.filter(m=>m.winner_team_id).length;
     const target=totalMatchesFor(e);
     const launch=e.status==='open'?`<section class="panel checkin-launch matchday-action-card" aria-label="Create match teams"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">${draft?'STEP 3 · PRIVATE TEAM PREVIEW':'STEP 2 · CHECK IN PLAYERS'}</span><strong>${draft?'🏐 Your team preview is ready':`✓ ${safe(e.title)} · ${count} checked in`}</strong><small>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · ${count}/${e.capacity} player spots · Round ${Number(e.round_number)||1}</small></div><span class="pill ${ready?'win':'wait'}">${ready?draft?'Ready to publish':'Ready to make teams':`${Math.max(0,needed-count)} more needed`}</span></div>
       <div class="matchday-primary-actions">${draft?`<button class="btn btn-primary" type="button" data-action="checkin-review-teams">✓ Review &amp; publish teams →</button><button class="btn btn-secondary" type="button" data-action="checkin-preview-teams">↻ Reshuffle preview</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-preview-teams" ${ready?'':'disabled'}>⚡ Make teams for Round ${Number(e.round_number)||1}</button>`}<button class="btn btn-secondary" type="button" data-action="open-session-settings">⚙ Match options</button><button class="btn btn-secondary" type="button" data-action="checkin-new-player">＋ New player</button></div>
-      <p class="matchday-help">${draft?'Preview is admin-only. Review positions and teammates before publishing; publishing is the final confirmation.':ready?`Uses the options shown below and generates a private preview. ${count<e.capacity?`${e.capacity-count} substitute spots will be filled.`:''}`:`Check in at least ${needed} players. Positions here update automatically as players arrive.`}</p></section>`
+      <p class="matchday-help">${draft?'Preview is admin-only. Review positions and teammates before publishing; publishing is the final confirmation.':ready?`Uses the options shown below and generates a private preview. ${count<e.capacity?`${e.capacity-count} substitute spots will be filled.`:count>e.capacity?`${count-e.capacity} randomly chosen players will be in overflow for this round.`:''}`:`Check in at least ${needed} players. Positions here update automatically as players arrive.`}</p></section>`
       :`<section class="panel checkin-launch matchday-action-card ${isRoundComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">STEP 4 · ${isRoundComplete()?'ROUND COMPLETE':'GAMES UNDERWAY'}</span><strong>${isRoundComplete()?'✅ All scores recorded — ready for new teams':'🏐 Teams are playing'}</strong><small>${done} of ${target} matches recorded · Round ${Number(e.round_number)||1} · Check-ins carry over</small></div><span class="pill ${isRoundComplete()?'win':'muted'}">${done}/${target} scored</span></div><div class="matchday-score-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${done}" aria-label="Recorded match results"><span style="width:${target?Math.round(100*done/target):0}%"></span></div><div class="matchday-primary-actions">${isRoundComplete()?`<button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options for next round</button>`:`<button type="button" class="btn btn-primary" data-action="checkin-courts">🔵🔴 View matches &amp; enter scores</button>`}</div><p class="matchday-help">${isRoundComplete()?'Next Teams archives the completed round, keeps every check-in, and prepares a fresh private preview with the same options. You will review before publishing.':'Record all scheduled results (or correct mistakes using Undo/Redo) before generating the next teams.'}</p></section>`;
     return heading+steps+stats+launch+renderAttendance()+`<div class="checkin-settings-shortcut"><div><strong>⚙ Session rules</strong><span>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · Play to ${Number(e.target_score)||25}</span></div><button type="button" class="btn btn-secondary" data-action="open-session-settings">Change settings</button></div>`;
   }
@@ -902,9 +950,9 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of ${matches.length} complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div>${scoreCorrectionPanel(court)}</section>`;
       return {roster,schedule};
     });
-    return `${title}${roundNextBanner}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All ${pub.teams.length} teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>
+    return `${title}${roundNextBanner}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All ${pub.teams.length} teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>${renderPublishedOverflow()}
       <div class="court-matches-heading"><h3>Live matches & results</h3><p>Target ${e.target_score||25} · Win by 2. ${canScore?'Enter final scores directly below each match.':'Follow the match order and final scores.'}</p></div>
-      ${canScore?'<div class="courts-community-notice">🏐 <strong>Community scoring is on.</strong> Anyone can record final scores or use Undo/Redo. Double-check the court and teams before confirming.</div>':e.status==='locked'&&!demo?'<div class="courts-community-notice" role="alert">⚠ Public scoring is not available yet. Ask an admin to install the V1.32 Supabase SQL update.</div>':''}
+      ${canScore?'<div class="courts-community-notice">🏐 <strong>Community scoring is on.</strong> Anyone can record final scores or use Undo/Redo. Double-check the court and teams before saving.</div>':e.status==='locked'&&!demo?'<div class="courts-community-notice" role="alert">⚠ Public scoring is not available yet. Ask an admin to install the V1.32 Supabase SQL update.</div>':''}
       <div class="courts-layout courts-matches-layout">${groups.map(g=>g.schedule).join('')}</div>
       <div class="hint" style="margin-top:15px">Every team plays two games. A temporary substitute can fill an open roster spot without receiving a rating.</div>${privateTools}`;
   }
@@ -924,11 +972,12 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const matches=attendanceMatches(),top=matches.slice(0,10);
     if(!top.length)return '<div class="attendance-no-match">No saved players match. Create their profile in the Admin tab, then return to Check-In.</div>';
     const checked=new Set(pub.roster.map(p=>p.id));
+    const full=!canCheckInMore();
     return `${top.map((p,i)=>{
-      const present=checked.has(p.id);
-      return `<button id="attendance-option-${i}" class="attendance-option ${i===attendanceActive?'selected':''}" type="button" role="option" aria-selected="${i===attendanceActive}" data-action="attendance-select" data-player="${safe(p.id)}" ${present?'disabled':''}>
+      const present=checked.has(p.id),disabled=present||full;
+      return `<button id="attendance-option-${i}" class="attendance-option ${i===attendanceActive?'selected':''}" type="button" role="option" aria-selected="${i===attendanceActive}" data-action="attendance-select" data-player="${safe(p.id)}" ${disabled?'disabled':''}>
         <span class="attendance-option-main"><strong>${safe(p.name)}</strong><small>${safe(p.position||'Unspecified')}</small></span>
-        <span class="attendance-option-action ${present?'already-here':''}">${present?'✓ Here':'＋ Check in'}</span>
+        <span class="attendance-option-action ${present?'already-here':''}">${present?'✓ Here':full?'Full · check Match Options':'＋ Check in'}</span>
       </button>`;
     }).join('')}${matches.length>top.length?`<div class="attendance-results-note">Showing 10 of ${matches.length} matches. Keep typing to narrow the list.</div>`:''}`;
   }
@@ -969,17 +1018,18 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       <p class="subtle">Check in players from your saved profiles. Check-ins remain for all rounds today. Only checked-in players are eligible for team creation.</p>
       <div class="attendance-stats"><div><strong>${checked.length}</strong><span>Here today</span></div><div><strong>${Math.max(0,all.length-checked.length)}</strong><span>Not checked in</span></div><div><strong>${Math.max(0,e.capacity-checked.length)}</strong><span>Open team spots</span></div></div>
       ${renderCheckedInPositionCounts()}
+      ${e.overflow_enabled?`<p class="hint overflow-checkin-note">⏳ Overflow mode is ON. ${Math.max(0,checked.length-e.capacity)} of ${checked.length} players will wait this round if teams are made now. Players are randomly redrawn for every new preview; all stay checked in.</p>`:''}
       ${editable?`<div class="attendance-find"><label class="label-input" for="attendance-search">Find a player to check in</label><div class="attendance-search-wrap"><span class="attendance-search-icon" aria-hidden="true">⌕</span><input id="attendance-search" type="search" class="field" placeholder="Type any part of a name…" value="${safe(attendanceSearch)}" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen&&attendanceSearch.trim())}" role="combobox" aria-label="Find registered player" /><div class="attendance-results" id="attendance-results" role="listbox" aria-label="Matching player profiles" ${attendanceDropdownOpen&&attendanceSearch.trim()?'':'hidden'}>${attendanceSuggestions()}</div></div><p class="attendance-search-hint">Matches appear as you type. Tap <strong>＋ Check in</strong> or use ↓ and Enter.</p></div>`:'<div class="hint">Teams are currently playing. Attendance changes reopen after this round ends.</div>'}
       <div class="attendance-list-head"><div><h4>Checked-in players</h4><span class="small-caps">${here.length} of ${all.length} profiles</span></div>${editable?'<span class="attendance-hint">Tap Remove if someone leaves</span>':''}</div>
       <div class="attendance-checked-list">${checkedList}</div>
     </section>`;
   }
-  function renderAddPlayerForm(){const active=pub.event?.status==='open';return `<section class="panel admin-section admin-add-player"><div class="panel-head"><h3>＋ Add a player</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Set the player's initial skill and preferred position once. Primary position determines the leaderboard category. Enable position balancing under Live Courts to consider primary and secondary positions when generating teams.</p>
+  function renderAddPlayerForm(){const active=pub.event?.status==='open',full=active&&!canCheckInMore();return `<section class="panel admin-section admin-add-player"><div class="panel-head"><h3>＋ Add a player</h3>${statusPill('Admin only','muted')}</div><p class="subtle">Set the player's initial skill and preferred position once. Primary position determines the leaderboard category. Enable position balancing under Live Courts to consider primary and secondary positions when generating teams.</p>
       <form id="add-player-form" class="form-stack">
         <div><label class="label-input" for="add-name">Player name</label><input class="field" id="add-name" name="name" placeholder="First name + last initial" minlength="2" maxlength="45" autocomplete="off" required /></div>
         <div class="form-two-columns"><div><label class="label-input" for="add-tier">Initial skill level</label><select class="field" name="tier" id="add-tier"><option value="beginner" selected>Beginner${showMmr?' · 1000 MMR':''}</option><option value="intermediate">Intermediate${showMmr?' · 1200 MMR':''}</option><option value="advanced">Advanced${showMmr?' · 1500 MMR':''}</option>${showMmr?'<option value="custom">Custom MMR · for outliers</option>':''}</select></div>
         <div><label class="label-input" for="add-position">Preferred position</label><select class="field" name="position" id="add-position">${positionOptions('Unspecified')}</select></div></div><div id="new-player-custom-mmr" class="custom-mmr-group" hidden><label class="label-input" for="add-custom-mmr">Custom starting MMR (500–2500)</label><input class="field" type="number" name="custom_mmr" id="add-custom-mmr" min="500" max="2500" step="1" value="1200" disabled /><p class="subtle">For players whose ability falls outside the three starting presets. Only admins can see ratings.</p></div><div><label class="label-input" for="add-secondary-position">Secondary position (optional)</label><select class="field" name="secondary_position" id="add-secondary-position">${positionOptions('Unspecified')}</select></div><p class="subtle">Flex as a secondary position means this player can cover any on-court role. Their primary position stays preferred.</p><div><label class="label-input" for="add-gender">Gender (optional · admin only)</label><select class="field" name="gender" id="add-gender">${genderOptions()}</select></div>
-        ${active?'<label class="check-inline"><input type="checkbox" name="checkin" checked /> Check into the current session now</label>':''}
+        ${active?(full?'<p class="hint" role="status">Check-in is full. You can create this player’s profile now. Enable Overflow Players in Match Options or remove an absent attendee to check them in.</p>':'<label class="check-inline"><input type="checkbox" name="checkin" checked /> Check into the current session now</label>'):''}
         <button class="btn btn-primary btn-full" type="submit">＋ Create player profile</button>
       </form></section>`;}
   function renderAdmin(){if(!demo&&!user)return `<section class="panel" style="max-width:500px;margin:0 auto"><div class="panel-head"><h3 id="admin-title">Admin sign-in</h3>${statusPill('Private','muted')}</div><p class="subtle">Player profiles, attendance, team assignments, ratings, and event settings require admin access. Anyone can enter or correct match scores from Live Courts.</p><form id="login-form" class="form-stack"><div><label for="admin-email" class="label-input">Email</label><input id="admin-email" class="field" type="email" name="email" placeholder="you@example.com" autocomplete="username" required /></div><div><label for="admin-password" class="label-input">Password</label><input id="admin-password" class="field" type="password" name="password" autocomplete="current-password" required /></div><button type="submit" class="btn btn-primary btn-full">Sign in securely</button></form><p class="subtle">Admins are approved in Supabase, not through a hardcoded website password.</p></section>`;
@@ -1011,8 +1061,9 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const section=(name,contents,note='')=>`<section class="session-settings-group"><h3>${name}</h3>${contents}${note?`<p class="session-settings-note">${note}</p>`:''}</section>`;
     const yesNo=(key,current,disabled=false)=>settingsChoice(key,'true','On',current,disabled)+settingsChoice(key,'false','Off',current,disabled);
     return `<div class="session-settings-overview"><strong>${safe(e.title)}</strong><span>${safe(niceDate(e.date))} · Round ${Number(e.round_number)||1} · ${attending}/${e.capacity} checked in</span><span class="${open?'session-open':'session-locked'}">${open?'● Changes save automatically':'🔒 Team settings locked while matches are live'}</span></div>
-      ${section('Court format',`<div class="session-court-grid">${court(1)}${court(2)}</div><p class="session-capacity-note">${e.capacity} total player spots · ${totalTeamsFor(e)} teams · ${totalMatchesFor(e)} matches per round</p>`, 'Court sizes and team counts take effect as soon as you tap a choice. Reducing capacity below today’s check-ins is blocked.')}
+      ${section('Court format',`<div class="session-court-grid">${court(1)}${court(2)}</div><p class="session-capacity-note">${e.capacity} total player spots · ${totalTeamsFor(e)} teams · ${totalMatchesFor(e)} matches per round</p>`, e.overflow_enabled?'Changing capacity will adjust the random overflow count; checked-in players remain.':'Court sizes and team counts take effect immediately. Enable Overflow Players first to use a smaller format without removing check-ins.')}
       ${section('Match & court rules',settingsRow('Target score',[15,21,25].map(n=>settingsChoice('score',n,`${n} points`,Number(e.target_score)||25,!open)).join(''),'Win by two points.')+settingsRow('Court balancing',settingsChoice('mode','mixed','🏐 Mixed',mode,!open)+settingsChoice('mode','split','🏆 Competitive / beginner',mode,!open||ignoreMmr),'Competitive / beginner courts require MMR.'))}
+      ${section('Overflow (optional)',settingsRow('Allow check-ins above court capacity',yesNo('overflow',e.overflow_enabled===true,!open),'OFF by default. When ON, everyone stays checked in and the app randomly chooses who plays each round. Extra players appear in an overflow group. Limit: 96 checked in per day.'))}
       ${section('Team balancing',settingsRow('Balance by volleyball position',yesNo('positions',positions,!open),'When off, assigned positions and missing-specialist icons stay hidden.')+settingsRow('Balance women across teams',yesNo('gender',admin?.gender_balance===true,!open))+settingsRow('Ignore MMR for team creation',yesNo('mmr',ignoreMmr,!open),'Scores still update MMR. This only changes team sorting.'))}
       ${section('Display',settingsRow('Team names',settingsChoice('name','numbers','Team 1–6',e.team_naming_mode||'numbers')+settingsChoice('name','funny','Funny names',e.team_naming_mode||'numbers'),'Blue uses Team 1–3; Red uses Team 4–6.')+settingsRow('Show positions on Live Courts & kiosk',yesNo('prefVisibility',e.show_player_positions===true,!positions),'Off: names only on published Live Courts/kiosk; preview still shows assigned roles but hides primary/secondary preferences. On: reveal position details.'))}
       ${!open?`<p class="session-settings-note">${isRoundComplete()?'All matches are complete. Choose Next round · Edit rules to archive the results and unlock these options.':'Complete all match scores to unlock settings for the next round.'} Finish Session remains protected under Admin.</p>`:''}`;
@@ -1059,7 +1110,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       if(setting.startsWith('size')){if(!Number.isInteger(n)||n<2||n>6)return;sizes[index]=n;}
       else{if(![2,3].includes(n))return;counts[index]=n;}
       const capacity=sizes[0]*counts[0]+sizes[1]*counts[1];
-      if(capacity<(pub?.roster||[]).length){flash(`That choice has ${capacity} spots, but ${(pub?.roster||[]).length} people are checked in. Remove absent players or increase another court first.`,true);return;}
+      if(capacity<(pub?.roster||[]).length&&e.overflow_enabled!==true){flash(`That choice has ${capacity} spots, but ${(pub?.roster||[]).length} are checked in. Enable Overflow Players first, or remove absent check-ins.`,true);return;}
       const same=setting.startsWith('size')?sizes.every((n,i)=>n===courtSizeFor(e,i+1)):counts.every((n,i)=>n===courtCountFor(e,i+1));
       if(same)return;
       const saved=await act(()=>setting.startsWith('size')?api.setCourtSizes(e.id,...sizes):api.setCourtTeamCounts(e.id,...counts),`Saved: Blue ${sizes[0]}v${sizes[0]} × ${counts[0]} teams; Red ${sizes[1]}v${sizes[1]} × ${counts[1]} teams. ${capacity} spots.`);
@@ -1067,6 +1118,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       else await refresh(true);
       return;
     }
+    if(setting==='overflow'){const enabled=value==='true';if(e.overflow_enabled===enabled)return;await act(()=>api.setOverflowMode(e.id,enabled),enabled?'Overflow enabled. Every team preview randomly selects who plays.':'Overflow disabled. Attendance must fit available team spots.');return;}
     if(setting==='name'){
       if(!['numbers','funny'].includes(value)||e.team_naming_mode===value)return;
       await act(()=>api.setTeamNamingMode(e.id,value),value==='funny'?'Funny names now displayed.':'Numbered team names now displayed.');return;
@@ -1155,17 +1207,26 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   }
   async function handleGenerate(){
     const e=pub?.event;
-    if(!adminGranted||!admin||!e||e.status!=='open')return;
-    const players=priorityRoster().slice(0,e.capacity).map(r=>admin.players.find(p=>p.id===r.id));
-    if(pub.roster.length>e.capacity){flash('Too many checked-in players for these court sizes. Remove absent check-ins first.',true);return;}
+    if(generatingTeams||!adminGranted||!admin||!e||e.status!=='open')return;
+    if(pub.roster.length>e.capacity&&e.overflow_enabled!==true){flash('Too many check-ins. Enable Overflow Players in Match Options before making teams.',true);return;}
+    const draw=drawRoundPlayers(priorityRoster(),e.capacity,e.overflow_enabled===true);
+    const players=draw.selected.map(r=>admin.players.find(p=>p.id===r.id));
     if(players.length<minimumPlayersFor(e)||players.some(p=>!p)){flash(`Check in at least ${minimumPlayersFor(e)} registered players and refresh the admin list.`,true);return;}
+    generatingTeams=true;
+    const buttons=[...document.querySelectorAll('[data-action="checkin-preview-teams"],[data-action="dialog-make-teams"],[data-action="draft-regenerate"],[data-action="demo-generate"],[data-action="generate"]')];
+    buttons.forEach(b=>b.disabled=true);
+    flash(`⏳ Sorting ${totalTeamsFor(e)} teams for Round ${Number(e.round_number)||1}…`);
     try{
-      pendingTeams=window.RallyMath.makeTeams(players,[courtSizeFor(e,1),courtSizeFor(e,2)],admin.previous_teams||[],e.court_mode==='split'?'split':'mixed',{balanceWomen:admin.gender_balance===true,balancePositions:admin.position_balance===true,ignoreMmr:admin.ignore_mmr===true,courtTeamCounts:[courtCountFor(pub.event,1),courtCountFor(pub.event,2)],roleHistory:admin.session_role_history||{}});
-      pendingTeamsKey=draftFingerprint();lockManualSwaps();draftStale=false;
+      // Yield one paint so the feedback actually appears BEFORE the 2–6 second
+      // synchronous matcher runs on older mobile/tablet devices.
+      await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+      pendingTeams=window.RallyMath.makeTeams(players,[courtSizeFor(e,1),courtSizeFor(e,2)],admin.previous_teams||[],e.court_mode==='split'?'split':'mixed',{balanceWomen:admin.gender_balance===true,balancePositions:admin.position_balance===true,ignoreMmr:admin.ignore_mmr===true,courtTeamCounts:[courtCountFor(e,1),courtCountFor(e,2)],roleHistory:admin.session_role_history||{}});
+      pendingOverflow=draw.overflow.map(r=>({id:r.id,name:r.name}));pendingTeamsKey=draftFingerprint();lockManualSwaps();draftStale=false;
       render();
       document.getElementById('team-draft-container')?.scrollIntoView({behavior:'smooth',block:'start'});
       flash('Unpublished preview ready. Review the teams, then choose Publish.');
-    }catch(e){flash(errText(e),true);}
+    }catch(error){flash(errText(error),true);}
+    finally{generatingTeams=false;buttons.forEach(b=>{if(b.isConnected)b.disabled=false;});}
   }
   async function handleDraftSwap(team,slot){
     const groups=currentDraft();if(!groups||!adminGranted||!manualSwapUnlocked)return;
@@ -1180,16 +1241,18 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   async function handlePublishDraft(){
     const groups=currentDraft(),e=pub?.event;
     if(!adminGranted||!groups||!e){flash('Preview is out of date. Generate it again.',true);return;}
-    const expected=new Set(priorityRoster().slice(0,e.capacity).map(p=>p.id));
+    const selectedCount=Math.min(pub.roster.length,e.capacity);
+    const allChecked=new Set(pub.roster.map(p=>p.id));
+    const expected=pub.roster.length>e.capacity&&e.overflow_enabled===true?new Set(allChecked):new Set(priorityRoster().slice(0,e.capacity).map(p=>p.id));
     const real=groups.flat().filter(p=>!p.is_placeholder);
     const present=new Set(real.map(p=>p.id));
     const subs=groups.flat().filter(p=>p.is_placeholder);
-    if(groups.length!==totalTeamsFor(e)||groups.some((g,i)=>g.length!==courtSizeFor(e,i<courtCountFor(e,1)?1:2))||real.length!==expected.size||present.size!==expected.size||[...present].some(id=>!expected.has(id))||subs.length!==e.capacity-expected.size){
+    if(groups.length!==totalTeamsFor(e)||groups.some((g,i)=>g.length!==courtSizeFor(e,i<courtCountFor(e,1)?1:2))||real.length!==selectedCount||present.size!==selectedCount||[...present].some(id=>!expected.has(id))||subs.length!==e.capacity-selectedCount||pendingOverflow.length!==pub.roster.length-selectedCount||pendingOverflow.some(p=>present.has(p.id)||!allChecked.has(p.id))||new Set([...present,...pendingOverflow.map(p=>p.id)]).size!==pub.roster.length){
       flash('Roster validation failed. Generate a new team preview.',true);return;
     }
     const avg=groups.map(window.RallyMath.teamAverage);
     const range=window.RallyMath.spread(groups);
-    const message=`Publish these reviewed teams for round ${e.round_number||1}?\n${courtSizeLabel(e)}\n\n${real.length} registered players · ${subs.length} unrated sub spots.\n${!showMmr?'Ratings concealed for screen sharing.':admin?.ignore_mmr===true?'MMR was excluded from team creation.':`Court 1 average MMR: ${avg.slice(0,courtCountFor(e,1)).map(Math.round).join(' / ')}\nCourt 2 average MMR: ${avg.slice(courtCountFor(e,1)).map(Math.round).join(' / ')}\nOverall spread: ${range} MMR.`}\n\nThese rosters will become visible to everybody. You cannot swap players after publishing unless the round is reset.`;
+    const message=`Publish these reviewed teams for round ${e.round_number||1}?\n${courtSizeLabel(e)}\n\n${real.length} registered players · ${subs.length} unrated sub spots · ${pendingOverflow.length} overflow this round.\n${!showMmr?'Ratings concealed for screen sharing.':admin?.ignore_mmr===true?'MMR was excluded from team creation.':`Court 1 average MMR: ${avg.slice(0,courtCountFor(e,1)).map(Math.round).join(' / ')}\nCourt 2 average MMR: ${avg.slice(courtCountFor(e,1)).map(Math.round).join(' / ')}\nOverall spread: ${range} MMR.`}\n\nThese rosters will become visible to everybody. You cannot swap players after publishing unless the round is reset.`;
     if(!confirm(message))return;
     const committed=await act(()=>api.publish(e.id,groups),'Reviewed teams published. Both courts now show the final rosters.');
     if(committed){showMmr=false;discardDraft();lockManualSwaps();draftStale=false;render();}
@@ -1204,10 +1267,11 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const output=form.querySelector('.score-projection');if(!output)return;
     const match=pub?.matches?.find(m=>m.id===form.dataset.match);if(!match)return;
     try{const {a,b}=scoreValues(form),winner=teamById(a>b?match.team_a_id:match.team_b_id);
-      output.innerHTML=`<strong>${safe(teamName(winner))} wins</strong> · Confirm both final scores, then save the match.`;
+      output.innerHTML=`<strong>${safe(teamName(winner))} wins</strong> · Tap Save final score to record immediately. Undo is available if needed.`;
     }catch(e){output.textContent=e.message||'Enter both final scores to see the winning team.';}
   }
   async function handleScore(form){
+    if(mutating)return; // Ignore a double tap while a score is being submitted.
     if(!demo&&pub?.scoreActionsAvailable!==true){flash('Scoring is unavailable. Ask an admin to install the V1.32 SQL update.',true);return;}
     const match=pub?.matches?.find(m=>m.id===form.dataset.match);
     if(!match||match.winner_team_id)return;
@@ -1215,7 +1279,8 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const {a,b}=scores;
     const winner=teamById(a>b?match.team_a_id:match.team_b_id);
     if(!winner){flash('One of the teams is not ready.',true);return;}
-    if(!confirm(`Record Court ${match.court} · Match ${match.order}\n${teamName(teamById(match.team_a_id))} ${a} – ${b} ${teamName(teamById(match.team_b_id))}\nWinner: ${teamName(winner)}\n\nConfirm final score?`))return;
+    // One-tap scoring: final-score validation and the backend's match locks
+    // provide safety. Court-specific Undo/Redo remains available for corrections.
     const saved=await act(()=>api.report(match.id,winner.id,a,b),`Court ${match.court} result saved: ${teamName(winner)} wins ${Math.max(a,b)}–${Math.min(a,b)}.`);
     if(saved)scoreDrafts.delete(match.id);else await refresh(true); // Another device may have saved first.
   }
@@ -1223,8 +1288,8 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   $('#demo-toggle')?.addEventListener('click',async ()=>{if(!adminGranted)return;if(demo)await setDemoMode(false);else await setDemoMode(true);});
   document.addEventListener('click',async ev=>{const nav=ev.target.closest('[data-tab]');if(nav){switchTab(nav.dataset.tab);return;}const btn=ev.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action;if((action.startsWith('demo-')||action==='exit-demo'||action==='jump-ratings')&&!adminGranted)return;switch(action){
     case 'exit-demo':await setDemoMode(false);break;
-    case 'demo-full':if(demo){if(demoData.history.length||demoData.teams.length){if(!confirm('Start a new practice with 36 sample attendees? Existing demo results will be reset; live data stays safe.'))break;}loadDemoScenario(36);await refresh();flash('A full-capacity sample roster is checked in. Teams are ready to preview.');switchTab('admin');}break;
-    case 'demo-subs':if(demo){if(demoData.history.length||demoData.teams.length){if(!confirm('Start a new practice with 28 players and 8 fill-in slots? Demo results will be reset.'))break;}loadDemoScenario(28);await refresh();flash('Sample players checked in. Team generation fills remaining spots with unrated substitute placeholders.');switchTab('admin');}break;
+    case 'demo-full':if(demo){if(demoData.history.length||demoData.teams.length){if(!confirm('Start a new practice with 36 sample attendees? Existing demo results will be reset; live data stays safe.'))break;}loadDemoScenario(36);await refresh();flash('36 sample players checked in. Review attendance or tap Make teams.');switchTab('signup');}break;
+    case 'demo-subs':if(demo){if(demoData.history.length||demoData.teams.length){if(!confirm('Start a new practice with 28 players and 8 fill-in slots? Demo results will be reset.'))break;}loadDemoScenario(28);await refresh();flash('28 sample players checked in. Review attendance or tap Make teams; empty spots become substitutes.');switchTab('signup');}break;
     case 'demo-generate':if(demo)await demoBuildTeams();break;
     case 'demo-score':if(demo)await demoScoreNext();break;
     case 'refresh':await refresh();break;
@@ -1255,7 +1320,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'checkin-courts':if(adminGranted){if(pub?.event?.status==='locked')switchTab('courts');else openSessionSettings();}break;
     case 'checkin-new-player':if(adminGranted){returnToCheckinAfterPlayerAdd=true;switchTab('admin');$('#add-name')?.focus({preventScroll:true});}break;
     case 'checkin-preview-teams':if(adminGranted&&pub?.event?.status==='open'){
-      if(pub.roster.length<minimumPlayersFor(pub.event)||pub.roster.length>pub.event.capacity){flash('Check-in is not ready for preview yet.',true);break;}
+      if(pub.roster.length<minimumPlayersFor(pub.event)||(pub.roster.length>pub.event.capacity&&!pub.event.overflow_enabled)){flash('Check-in is not ready for preview yet.',true);break;}
       switchTab('courts');await handleGenerate();
     }break;
     case 'generate':await handleGenerate();break;

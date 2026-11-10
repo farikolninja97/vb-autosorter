@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.46';
+  const VERSION='1.47';
   const $=selector=>document.querySelector(selector);
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Denver',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -78,6 +78,18 @@
       ${scorePossible?`<div class="kiosk-corrections"><span>Score mistake?</span><button type="button" data-correction="undo" data-court="${court}" ${undo?'':'disabled'}>↶ Undo</button><button type="button" data-correction="redo" data-court="${court}" ${redo?'':'disabled'}>↷ Redo</button></div>`:''}
     </section>`;
   }
+  function renderOverflow(){
+    if(state.data?.event?.status!=='locked')return '';
+    // Compare already-public names-only attendance against published rosters.
+    // No profile IDs, gender or MMR are exposed.
+    const playing=new Set(allTeams().flatMap(t=>(t.players||[])
+      .filter(p=>!p.is_placeholder).map(p=>String(p.name).trim().toLocaleLowerCase())));
+    const waiting=(state.data?.checked_in_names||[])
+      .filter(name=>!playing.has(String(name).trim().toLocaleLowerCase()))
+      .sort((a,b)=>String(a).localeCompare(String(b)));
+    if(!waiting.length)return '';
+    return `<section class="kiosk-overflow" aria-label="Overflow players this round"><h2>⏳ Overflow · ${waiting.length} players</h2><p>Waiting this round · Everyone stays checked in and is eligible for the next random team draw.</p><div class="kiosk-overflow-names">${waiting.map(name=>`<span>${escapeHtml(name)}</span>`).join('')}</div></section>`;
+  }
   function render(){
     const e=state.data?.event;
     const count=Number(e?.player_count)||0;
@@ -91,7 +103,7 @@
     });
     if(!e){root.innerHTML='<section class="kiosk-empty"><strong>No active session yet</strong><p>Team assignments will appear here when organizers open a session.</p></section>';renderSearch();return;}
     if(!allTeams().length){root.innerHTML='<section class="kiosk-empty"><strong>Waiting for teams</strong><p>Once organizers publish a round, the team rosters and court assignments will appear here automatically.</p></section>';renderSearch();return;}
-    root.innerHTML=`<div class="kiosk-courts ${state.filter==='all'?'show-both':'show-one'}">${[1,2].filter(c=>state.filter==='all'||state.filter===String(c)).map(renderCourt).join('')}</div>`;
+    root.innerHTML=`<div class="kiosk-courts ${state.filter==='all'?'show-both':'show-one'}">${[1,2].filter(c=>state.filter==='all'||state.filter===String(c)).map(renderCourt).join('')}</div>${renderOverflow()}`;
     if(e.status==='locked'&&!state.readyToScore){root.insertAdjacentHTML('afterbegin','<p class="readonly-warning" role="alert">Scores are read-only. Public scoring requires the V1.32 Supabase migration. Ask an organizer for assistance.</p>');}
     renderSearch();
   }
@@ -181,7 +193,8 @@
     const match=allMatches().find(m=>m.id===s.matchId);
     if(!matchReady(match)){closeScore();notify('This match is no longer available.',true);return;}
     const left=moneylessTeamName(teamById(s.teamA)),right=moneylessTeamName(teamById(s.teamB));
-    if(!confirm(`Save final score?\n\nCOURT ${s.court} · MATCH ${match.order}\n${left} ${scores.a} – ${scores.b} ${right}\nWinner: ${scores.a>scores.b?left:right}\n\nDouble-check the court and result. You can undo mistakes later.`))return;
+    // One-tap score submission. The live snapshot check below prevents stale
+    // matches from being scored, and Undo/Redo handles corrections.
     $('#save-score').disabled=true;
     const saved=await performAction(async()=>{
       // Check the live round again. The server also enforces match readiness.

@@ -1231,3 +1231,14 @@ html[data-theme="dark"] .draft-player.draft-player-selected {background:#624c2a!
   text-shadow:0.75px 0 var(--role-letter-outline),-0.75px 0 var(--role-letter-outline),
     0 0.75px var(--role-letter-outline),0 -0.75px var(--role-letter-outline);
 }
+
+/* V1.47 · private random overflow preview and public published waiting group. */
+.overflow-group{margin:16px 0;padding:15px 17px;border:1px solid #d3a352;border-left:5px solid #ce9a2c;border-radius:12px;background:#fffaf0;color:#553e19}
+.overflow-group h3,.overflow-group h4{font-size:16px;line-height:1.3;margin:0 0 5px;font-weight:850;color:inherit}
+.overflow-group p{font-size:12px;margin:0 0 10px;line-height:1.55;color:inherit}
+.overflow-names{display:flex;flex-wrap:wrap;gap:7px}
+.overflow-names span{background:rgba(215,162,58,.12);border:1px solid rgba(170,120,35,.3);border-radius:20px;padding:6px 11px;font-size:12px;font-weight:750;color:inherit}
+.overflow-checkin-note{margin:12px 0;border-left-color:#d29e36}
+html[data-theme=dark] .overflow-group{background:#362c1d;border-color:#9e7c44;color:#ffe3a7}
+html[data-theme=dark] .overflow-names span{border-color:#957547;background:#48351d}
+@media(max-width:560px){.overflow-group{margin:12px 0;padding:12px}.overflow-names span{font-size:11px;padding:5px 9px}}

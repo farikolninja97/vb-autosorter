@@ -1,42 +1,62 @@
-# RallyRank V1.45 — Live Courts position display & MMR control fix
+# RallyRank V1.47 — Update Only
 
-**Apply on top of V1.44**, with the V1.41 and earlier SQL migrations already installed. This is a **frontend-only update**.
+**Base:** RallyRank V1.46 (install all prior database upgrades through V1.41 first).  
+**Deployment:** GitHub Pages + Supabase.  
+**Important:** `config.js` is deliberately **NOT** included. Preserve your existing configuration and credentials.
 
-## Changes
+## What's new
 
-- **Removed the MMR hidden/show button from the global page header.** Team Preview keeps its own Show/Hide MMR control. To preserve existing admin functions, there are small contextual MMR controls inside Admin → Edit player profiles, Rankings, and the private Live Courts match-rating section. All are hidden by default on page load and reset to hidden when navigating to another tab. Preview MMR also resets when the draft is discarded or teams are published.
-- **Fixed the Live Courts position visibility setting.** Previously, `Show primary / secondary preferences` hid only the preference line, while **Assigned:** positions still appeared. The setting is now explicitly **Show positions on Live Courts & kiosk**:
-  - **OFF:** Published Live Courts and the community kiosk display **names only**, without assigned positions, primary/secondary preferences, role-specific outlines, or admin specialist warning icons.
-  - **ON:** When position balancing is enabled, published Live Courts show assigned positions (with their emojis), primary/secondary preferences, and admin-only role outlines/icons; kiosk shows assigned positions.
-  - The private **Team Preview** still shows assigned positions for admins regardless of published visibility.
-  - Turning **Balance by volleyball position** OFF also hides the published position details regardless of the separate visibility setting.
-- Public visibility continues to be controlled by the existing admin-checked `vmm_set_show_player_positions` RPC; no changes to role assignment, player data, MMR math, check-ins, matches, or permission checks.
-- Updated main and kiosk version footers and cache-busting queries to **V1.45**.
+### 1) One-tap final score entry
+- On Live Courts and Kiosk, entering a valid final score and pressing **Save** submits it directly. There is no second confirmation dialog.
+- Score validation (15/21/25 targets, win by two), disabled duplicate submissions, and per-court Undo/Redo remain intact.
+- Publishing teams, archiving a round, and destructive actions still require their existing confirmations.
 
-## Installation
+### 2) Optional randomized overflow players
+- **Off by default**. From admin Check-in, open **Match Options > Overflow (optional)** and turn it **On** if more players are checked in than the court capacity.
+- Up to 96 players may stay checked in for the day when enabled. Court capacity is unchanged; an over-capacity group does not create extra teams.
+- Every **Make Teams** or **Generate different teams** action uses a fresh random selection of court players. Everyone else appears under **Overflow** in Team Preview and, after publishing, on Live Courts and Kiosk.
+- Overflow participants stay checked in and eligible for the next round. Random selection is **not a guarantee** that every individual will play an equal number of rounds.
+- The feature is non-disruptive when attendance is within capacity; the original publishing functions are used in that case.
+- Turning Overflow off is blocked while attendance still exceeds capacity.
 
-1. Keep a backup of your working V1.44 site and database.
-2. From `github-pages/`, copy **only these five changed files** into the root of `https://github.com/farikolninja97/vb-autosorter`:
+### 3) Balance women across teams ON for new daily sessions
+- Fresh daily sessions now start with **Balance women across teams: On**.
+- The setting can be turned **Off** (or back On) with one tap in Match Options before publishing.
+- Existing daily sessions and their current choices are **not overwritten**.
+- Balancing uses the existing opt-in profile gender data and does not change the Middle Blocker restriction.
+
+### 4) Check-in improvements
+- The new-player shortcut returns to Check-in after successful profile creation.
+- With Overflow off and court spots full, new profiles can still be created, but automatic check-in is prevented until space is available.
+- With Overflow on, check-ins can go beyond court capacity (up to the daily cap), including adding a new profile and checking them in.
+- Demo's 36-player and 28-player shortcuts return to Check-in, rather than Admin.
+
+## Installation (important order)
+
+1. **Back up your Supabase database and GitHub repository**. Verify you are in the Supabase project connected to your website's existing `config.js`.
+2. Run the complete `supabase/upgrade-v1.47.sql` once in **Supabase SQL Editor**. The SQL is non-destructive: it does not erase existing players, stored ratings, or match history.
+3. Upload **only the six files** in `github-pages/` to the **root** of `https://github.com/farikolninja97/vb-autosorter`, replacing the matching files:
    - `app.js`
-   - `styles.css`
    - `index.html`
+   - `styles.css`
    - `kiosk.js`
    - `kiosk.html`
-3. **Do not replace `config.js`.** Keep `matchmaking.js`, `team-names.js`, `team-display.js`, `cos-theme.css`, other assets, and configured Supabase credentials unchanged.
-4. Force-refresh the main site and kiosk (especially on a cached Android tablet) and verify both show **V1.45**.
-5. Admin → Check-in → **Match options** → **Display** → **Show positions on Live Courts & kiosk**. Tap **Off** to show names only, or **On** for position details. Saving is automatic.
+   - `kiosk.css`
+4. **Do not delete or overwrite** `config.js`, `matchmaking.js`, `team-display.js`, `team-names.js`, `cos-theme.css`, kiosk assets, or other unchanged files.
+5. Reload the website/kiosk, bypassing cache if necessary. Both should read **V1.47**.
 
-## Supabase
+## Quick smoke test (Demo Mode)
 
-**No Supabase SQL migration is required for V1.45.** Existing V1.24+ permission-controlled preference visibility and V1.41 database support remain in use.
+1. Start a new practice day; confirm **Balance women across teams = On**. Turn it Off and On again to verify the selection.
+2. On Check-in, verify full 6v6 capacity is 36 (3+3 teams), then enable Overflow in Match Options.
+3. Check in 39 players and choose Make Teams. Six teams of six should be created, with three overflow names.
+4. Click **Generate different teams** and verify the overflow group is redrawn. Publish and verify overflow names appear on Live Courts and Kiosk.
+5. Enter all six match scores and confirm each takes **one Save** without an additional Yes/OK dialog.
+6. Choose **Next Teams · Same options**. Verify all 39 players are still checked in and three overflow players are chosen again.
+7. Turn Overflow off only after attendance is at or below court capacity.
 
-## Checks performed (local, simulated—not live Supabase)
+## Verification / limits
 
-- JavaScript syntax: `app.js`, `kiosk.js` — passed.
-- Browser: header MMR removed, published Live Courts OFF → ON → OFF, including assigned and primary/secondary details and colored outlines — passed.
-- Browser: kiosk OFF → ON → OFF while position balancing stays ON — passed.
-- Browser: Demo Team Preview Show MMR, automatic hiding on navigation/discard, and contextual Admin MMR editing still available — passed.
-- Existing V1.43 one-tap settings, five-match round flow, change options, incomplete-round safety, mobile settings modal — passed.
-- Existing role fairness, team names, role order, and multi-round tests — passed.
-
-**Limit:** the production Supabase database and real multi-device sync were not exercised. Test the new switch with a demo or practice session before an event.
+- Passed locally: JavaScript syntax checks; court-format randomized matchmaking tests (2+2, 2+3, 3+2, 3+3); daily session creation; adding and checking in players; women's balancing default and On/Off toggle; 39-for-36 overflow draw and regeneration; publishing; direct score submissions; next-round check-in retention; kiosk score-entry; no new confirm dialog; previous roles and display tests.
+- **Not verified against the live Supabase project**. Always test the new SQL and a practice round before a real event.
+- Keep a backup in case any earlier migrations or custom SQL differ from the expected RallyRank schema.
