@@ -109,7 +109,7 @@
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.49';
+  const APP_VERSION='1.50';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -224,9 +224,14 @@
     if(admin?.position_balance!==true)return '';
     const history=admin.session_role_history||{};
     const targets=new Set(['Setter','Outside Hitter','Opposite','Middle Blocker','Libero']);
-    const real=groups.flat().filter(p=>!p.is_placeholder&&targets.has(p.position||p.primary_position));
-    const awaiting=real.filter(p=>!(history[p.id]||[]).includes(p.position||p.primary_position));
-    const remaining=awaiting.filter(p=>p.assigned_position!==(p.position||p.primary_position));
+    // A primary Flex player has the freedom to play any on-court role. Count
+    // that as a genuine primary-role opportunity, including across rounds.
+    const primary=p=>p.position||p.primary_position;
+    const eligible=p=>targets.has(primary(p))||primary(p)==='Flex';
+    const filled=(p,role)=>targets.has(role)&&(role===primary(p)||primary(p)==='Flex');
+    const real=groups.flat().filter(p=>!p.is_placeholder&&eligible(p));
+    const awaiting=real.filter(p=>!(history[p.id]||[]).some(role=>filled(p,role)));
+    const remaining=awaiting.filter(p=>!filled(p,p.assigned_position));
     // Of people who still need a primary-role opportunity today, what share
     // would get their PRIMARY role in this proposed round? Never divide by zero.
     const covered=awaiting.length-remaining.length;
@@ -253,7 +258,7 @@
         <ul class="draft-player-list">${team.map((p,si)=>({p,si})).sort((a,b)=>window.RallyTeamDisplay.rank(a.p.assigned_position)-window.RallyTeamDisplay.rank(b.p.assigned_position)||String(a.p.name).localeCompare(String(b.p.name))).map(({p,si})=>{
           const active=Boolean(draftSelection&&draftSelection.team===ti&&draftSelection.slot===si);
           const details=draftMemberInfo(p);
-          return `<li class="draft-player ${active?'draft-player-selected':''}${preferenceClass(p)}"${preferenceTitle(p)}><div class="draft-player-details"><strong>${safe(draftMemberLabel(p))}</strong>${details?`<small>${details}</small>`:''}</div>${manualSwapUnlocked?`<button type="button" class="btn btn-small ${active?'btn-primary':'btn-secondary'} draft-swap-btn" data-action="draft-swap-slot" data-team="${ti}" data-slot="${si}" aria-pressed="${active}">${active?'Selected':sel?'Swap here':'Select'}</button>`:''}</li>`;
+          return `<li class="draft-player ${active?'draft-player-selected':''}${p.is_placeholder?' draft-sub-needed':''}${preferenceClass(p)}"${preferenceTitle(p)}><div class="draft-player-details"><strong>${safe(draftMemberLabel(p))}</strong>${details?`<small>${details}</small>`:''}</div>${manualSwapUnlocked?`<button type="button" class="btn btn-small ${active?'btn-primary':'btn-secondary'} draft-swap-btn" data-action="draft-swap-slot" data-team="${ti}" data-slot="${si}" aria-pressed="${active}">${active?'Selected':sel?'Swap here':'Select'}</button>`:''}</li>`;
         }).join('')}</ul></div>`;
       }).join('')}</div></section>`).join('')}</div>
       <div class="draft-footer"><div><button type="button" class="btn btn-secondary" data-action="draft-regenerate">↻ Generate different teams</button> <button type="button" class="btn btn-secondary" data-action="draft-discard">Discard preview</button></div><button type="button" class="btn btn-primary" data-action="draft-publish">✓ Publish these teams</button></div>

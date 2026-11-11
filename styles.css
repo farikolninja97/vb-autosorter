@@ -1336,3 +1336,46 @@ html[data-theme="dark"] .draft-player.draft-player-selected[class*="is-preferred
 .draft-role-legend .role-key-autofilled {background:var(--role-dot-autofilled);border:0}
 .draft-primary-coverage strong {font-weight:900;font-size:1.12em;font-variant-numeric:tabular-nums}
 .draft-primary-coverage small {font-size:inherit;font-weight:500}
+
+
+/* V1.50: high-visibility substitute slots without distracting real-player rows. */
+/* The preview is admin-only; a missing substitute is not a role-fit error. */
+.team-draft .draft-player.draft-sub-needed,
+.team-draft .draft-player.draft-sub-needed.draft-player-selected {
+  border:2px solid #e7af12!important;
+  border-radius:9px;
+  background:#fff9e3!important;
+  box-shadow:inset 0 0 0 1px #f9d66e;
+  padding:7px 9px;
+  margin:4px 0;
+}
+.team-draft .draft-player.draft-sub-needed .draft-player-details > strong {
+  color:#795000;
+}
+/* Published roster: bold yellow border remains visible on Blue and Red courts. */
+.court-roster .team-members li.sub-member {
+  border:2px solid #e7af12!important;
+  border-radius:9px;
+  background:#fff9e3;
+  color:#795000;
+  box-shadow:inset 0 0 0 1px #f9d66e;
+  padding:8px 10px;
+}
+html[data-theme="dark"] .team-draft .draft-player.draft-sub-needed,
+html[data-theme="dark"] .team-draft .draft-player.draft-sub-needed.draft-player-selected,
+html[data-theme="dark"] .court-roster .team-members li.sub-member {
+  border-color:#facc39!important;
+  background:#42351a!important;
+  color:#ffe8a2;
+  box-shadow:inset 0 0 0 1px #a37d20;
+}
+html[data-theme="dark"] .team-draft .draft-player.draft-sub-needed .draft-player-details > strong {color:#ffe8a2}
+/* The alternate COS brand must keep the missing-sub contrast on both themes. */
+html[data-brand="cos"] .team-draft .draft-player.draft-sub-needed,
+html[data-brand="cos"] .court-roster .team-members li.sub-member {border-color:#e7af12!important}
+html[data-brand="cos"][data-theme="dark"] .team-draft .draft-player.draft-sub-needed,
+html[data-brand="cos"][data-theme="dark"] .court-roster .team-members li.sub-member {
+  border-color:#facc39!important;
+  background:#42351a!important;
+  color:#ffe8a2;
+}

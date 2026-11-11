@@ -1,40 +1,45 @@
-# RallyRank V1.49 — Update Only
+# RallyRank V1.50 — Update Only
 
-**Install on top of V1.48.** This is a frontend-only patch.
+**Install over V1.49.** This is a presentation-only update. Matchmaking, score entry, Supabase tables/functions, and configured `config.js` are unchanged.
 
 ## Changes
 
-1. **Small role-fit dots instead of colored name outlines** in admin Team Preview and admin-visible published rosters. No more highlighted lettering or full-row outlines.
-   - **Green ●** = assigned role matches primary position.
-   - **Yellow ●** = assigned role matches secondary position.
-   - **Red ●** = assigned role was autofilled outside the preferred roles.
-   The published roster's existing bullet is colored rather than adding a duplicate bullet. Public players do not see private preference-fit data.
-2. **Primary-role opportunity percentage** replaces the awkward `Primary role fairness: X/Y` text in Team Preview. This shows what percent of players in the proposed teams **who have not yet received their primary-position assignment this daily session** would receive their primary role in this proposed round. Example: 2 of 3 waiting players => **67%**. A 100% reading when nobody remains waiting explicitly says so. The indicator is hidden when position balancing is off. This is a preview measure, not a guarantee that everybody gets their preference.
-3. Both main and kiosk footer labels display **V1.49**.
+1. **Missing substitutes are obvious:** `Sub needed` rows have a **solid yellow outline** in the private Team Preview, published Live Courts, and the community kiosk. This remains visible when the position-detail toggle is OFF. If assigned positions are enabled and a substitute has a known role, the row continues to show `Needed: <role>`.
+2. **Flex correctly counts as a preferred fit (admin-only dots):**
+   - **Green dot:** exact primary role **or primary Flex**, meaning any eligible assigned role is an acceptable primary match.
+   - **Yellow dot:** exact secondary role **or secondary Flex**, as long as the assigned role did not already qualify as primary.
+   - **Red dot:** an assigned role not covered by the player's primary or secondary preferences.
+   - Substitute rows get the **yellow outline**, not a role-fit dot.
+   - A woman choosing Flex **still cannot be assigned Middle Blocker unless Middle is explicitly her primary or secondary preference**. That existing safeguard remains in the matcher; the display helper also will not mislabel an unauthorized Middle assignment as a green/yellow Flex match.
+3. **Primary-role opportunity percentage accounts for primary Flex:** a completed, valid assignment satisfies a primary-Flex player's preference for that session. Secondary Flex does **not** count as receiving a more specific primary position.
+4. Both page footers display **V1.50**. Updated `?v=1.50` cache tokens for the edited frontend files and the shared role-display helper.
 
 ## Install
 
-1. Open the ZIP. Copy **only** these files from `github-pages/` into the root of your `vb-autosorter` GitHub Pages repository, replacing their older versions:
+1. Back up your current website files.
+2. Copy these **six changed files** from the ZIP's `github-pages/` directory to the root of your `vb-autosorter` GitHub Pages repository:
    - `app.js`
    - `styles.css`
+   - `team-display.js`
+   - `kiosk.css`
    - `index.html`
-   - `kiosk.html` (version footer only; kiosk logic remains unchanged)
-2. **Keep your existing `config.js`** and all other files, including `matchmaking.js`, `team-display.js`, `team-names.js`, kiosk code, and assets. Never reset or replace the database.
-3. Refresh the website and check that the footer says **V1.49**. If cached on a tablet, close and reopen the kiosk.
+   - `kiosk.html`
+3. **Do not replace your configured `config.js`.** All other files remain untouched, including `matchmaking.js`, `team-names.js`, and `kiosk.js`.
+4. Refresh the website and reopen/refresh the kiosk. Check **V1.50** in both footers. On an old kiosk installation, a hard refresh may be needed to fetch the cache-busted stylesheet.
 
-**Supabase changes: NONE. No SQL migration is required.**
+**Supabase changes: NONE. Do not run any SQL for V1.50.** An empty `supabase/` directory is included for release consistency.
 
-## Quick test
+## Quick practice checks
 
-1. In Demo Mode enable positional team balancing, generate a private team preview, and confirm one green/yellow/red dot is shown to the left of each real player as appropriate; placeholders have no dot.
-2. Confirm there are no colored outlines on the lettering or around player rows.
-3. Confirm the preview shows `Primary-role opportunity: 67%` for a scenario where 2 of 3 still-waiting players would receive their primary position. The explanatory count should match the percentage.
-4. Publish a practice round with position display enabled; admin-published rosters should have **one** colored bullet per player, not two. Public viewers must not see preference-fit colors.
-5. Turn **Balance teams by volleyball position** off; the percentage and role-fit indicators are not shown. Existing score, MMR, and round workflow are unchanged.
+- With position balancing ON, generate a preview containing placeholders. Verify every `Sub needed` row has a yellow outlined box. The assigned role, when available, still appears.
+- Publish in a practice session and check the yellow substitute outline on Live Courts and the kiosk, both on mobile and larger displays.
+- For a player with **primary Flex**, every valid assigned role is marked green. For **secondary Flex** with a different primary role, a non-primary assigned role is yellow. Other autofill assignments remain red.
+- Turn the position visibility toggle OFF: assigned-role details disappear on published Live Courts/kiosk, but yellow placeholder outlines remain.
+- Confirm scoring, player check-ins and round operations remain unchanged.
 
-## Checks performed
+## Validation
 
-- `node --check` passed for edited `app.js`.
-- 12 logic, version, and style checks passed (`tests/verify-v149.cjs`).
-- Chromium style/layout tests passed for green/yellow/red indicators, no colored text strokes, one published bullet, and light/dark COS theme at mobile width.
-- Full live Supabase behavior was not tested; these files do not change any database functions.
+- `node --check` passed for `app.js` and `team-display.js`.
+- 26 helper, percentage, version, release-content, and CSS checks passed in Node.js.
+- Chromium visual checks passed for yellow placeholders and green/yellow/red dots on RallyRank and COS themes, light/dark modes, and mobile/desktop kiosk widths.
+- Live Supabase behavior was not tested; this update does not change the database.

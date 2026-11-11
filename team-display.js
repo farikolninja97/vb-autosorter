@@ -1,4 +1,5 @@
-/* RallyRank V1.42 - One consistent role order on every view. Presentation only. */
+/* RallyRank V1.50 - Consistent role display and Flex-aware preference fit.
+   This module changes display classification only; it never changes match assignments. */
 (function(root){
   'use strict';
   const ORDER=['Setter','Outside Hitter','Opposite','Middle Blocker','Libero'];
@@ -18,12 +19,22 @@
   function preference(player,profile,history){
     const role=player?.assigned_position,primary=profile?.position||profile?.primary_position,
           secondary=profile?.secondary_position;
-    if(!role||player?.is_placeholder||!profile)return null;
-    const kind=role===primary?'primary':role===secondary?'secondary':null;
-    if(!kind)return null;
+    if(!ORDER.includes(role)||player?.is_placeholder||!profile)return null;
+    // Preserve the matchday safety rule: women cannot cover Middle just by
+    // choosing Flex. They must explicitly list Middle as primary or secondary.
+    const restrictedMiddle=role==='Middle Blocker'&&profile.gender==='Woman'
+      &&primary!=='Middle Blocker'&&secondary!=='Middle Blocker';
+    const primaryFit=role===primary||(primary==='Flex'&&!restrictedMiddle);
+    const secondaryFit=role===secondary||(secondary==='Flex'&&!restrictedMiddle);
+    // Primary Flex makes *any eligible assigned role* a primary fit (green).
+    // Secondary Flex covers any eligible role when primary does not (yellow).
+    // Exact role matches retain their usual primary/secondary color.
+    const kind=primaryFit?'primary':secondaryFit?'secondary':'autofilled';
     const past=Array.isArray(history?.[player.id])?history[player.id]:[];
     const previous=past.length?past[past.length-1]:null;
-    const returned=Boolean(previous&&previous!==primary&&previous!==secondary);
+    const previousWasPreferred=previous&&(previous===primary||previous===secondary
+      ||primary==='Flex'||secondary==='Flex');
+    const returned=Boolean(kind!=='autofilled'&&previous&&!previousWasPreferred);
     return {kind,returned};
   }
   const api={ORDER,ICONS,rank,sort,icon,label,preference};
