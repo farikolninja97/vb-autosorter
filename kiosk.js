@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.48';
+  const VERSION='1.52';
   const $=selector=>document.querySelector(selector);
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Denver',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -8,7 +8,12 @@
   const db=config.supabaseUrl&&config.supabaseAnonKey&&window.supabase?.createClient(config.supabaseUrl,config.supabaseAnonKey)||null;
   const state={data:null,filter:'all',search:'',loading:false,refreshQueued:false,busy:false,modal:null,readyToScore:false,channel:null,wakeLock:null};
   let toastTimer=null,refreshTimer=null;
-  const moneylessTeamName=team=>window.RallyTeamNames.label(team,state.data?.event?.team_naming_mode);
+  const rotation=()=>state.data?.five_rotation?.active?state.data.five_rotation:null;
+  const moneylessTeamName=team=>{
+    if(!team)return 'TBD';
+    const current=rotation();
+    return current?window.RallyFiveRotation.label(current,team.id,state.data?.event?.team_naming_mode):window.RallyTeamNames.label(team,state.data?.event?.team_naming_mode);
+  };
   const courtName=c=>`Court ${c}`;
   const assignedRoleLabel=role=>window.RallyTeamDisplay.label(role);
   const allTeams=()=>state.data?.teams||[];
@@ -31,10 +36,10 @@
     if(!state.readyToScore)return null;
     const r=(state.data?.redo_scores||[]).find(x=>Number(x.court)===court);
     const m=r&&allMatches().find(x=>x.id===r.match_id);
-    return m&&!m.winner_team_id&&m.team_a_id&&m.team_b_id?r:null;
+    return m&&!m.winner_team_id&&m.team_a_id&&m.team_b_id&&(!rotation()||Number(m.order)===Number(rotation().wave))?r:null;
   }
   function latestCompleted(court){
-    return allMatches().filter(m=>Number(m.court)===court&&m.winner_team_id&&Number(m.completed_seq)>0)
+    return allMatches().filter(m=>Number(m.court)===court&&m.winner_team_id&&Number(m.completed_seq)>0&&(!rotation()||Number(m.order)===Number(rotation().wave)))
       .sort((a,b)=>Number(b.completed_seq)-Number(a.completed_seq))[0]||null;
   }
   function matchReady(m){
@@ -64,13 +69,14 @@
     </section>`;
   }
   function renderCourt(court){
-    const teams=allTeams().filter(t=>Number(t.court)===court).sort((a,b)=>Number(a.number)-Number(b.number));
-    const matches=allMatches().filter(m=>Number(m.court)===court).sort((a,b)=>Number(a.order)-Number(b.order));
+    const ids=rotation()?(court===1?rotation().blue_ids:rotation().red_ids):null;
+    const teams=rotation()?ids.map(teamById).filter(Boolean):allTeams().filter(t=>Number(t.court)===court).sort((a,b)=>Number(a.number)-Number(b.number));
+    const matches=allMatches().filter(m=>Number(m.court)===court&&(!rotation()||Number(m.order)===Number(rotation().wave))).sort((a,b)=>Number(a.order)-Number(b.order));
     const completed=matches.filter(m=>m.winner_team_id).length;
     const undo=latestCompleted(court),redo=applicableRedo(court);
     const scorePossible=state.readyToScore&&state.data?.event?.status==='locked';
     return `<section class="kiosk-court kiosk-court-${court}" id="kiosk-court-${court}" aria-label="${courtName(court)}">
-      <header class="kiosk-court-head"><div><span class="court-eyebrow">${court===1?'● BLUE COURT':'● RED COURT'}</span><h2>Court ${court}</h2><p>${formatSize(court)} · ${teams.length} teams · ${completed}/${matches.length||0} matches finished</p></div><span class="court-progress">${matches.length&&completed===matches.length?'COMPLETED':completed?'IN PROGRESS':'UP NEXT'}</span></header>
+      <header class="kiosk-court-head"><div><span class="court-eyebrow">${court===1?'● BLUE COURT':'● RED COURT'}</span><h2>Court ${court}</h2><p>${formatSize(court)} · ${teams.length} teams · ${completed}/${matches.length||0} ${rotation()?'current set games':'matches'} finished</p></div><span class="court-progress">${matches.length&&completed===matches.length?'COMPLETED':completed?'IN PROGRESS':'UP NEXT'}</span></header>
       <div class="roster-heading"><strong>PLAYER ROSTERS</strong><small>Find your team below</small></div>
       <div class="kiosk-teams ${teams.length===2?'two-team-layout':''}">${teams.map(t=>renderTeam(t,court)).join('')}</div>
       <div class="matches-heading"><strong>MATCHES & SCORING</strong><small>Play to ${Number(state.data?.event?.target_score)||25} · Win by 2</small></div>
@@ -94,7 +100,7 @@
     const e=state.data?.event;
     const count=Number(e?.player_count)||0;
     $('#session-name').textContent=e?(e.title||'Volleyball Night'):'No active volleyball session';
-    $('#session-subtitle').textContent=e?`Round ${Number(e.round_number)||1} · ${count} checked in · ${e.status==='locked'?'Teams are live':'Waiting for team assignments'}`:'Ask an organizer to start today’s session';
+    $('#session-subtitle').textContent=e?`${rotation()?`Five-team rotation · Set ${rotation().wave}`:`Round ${Number(e.round_number)||1}`} · ${count} checked in · ${e.status==='locked'?'Teams are live':'Waiting for team assignments'}`:'Ask an organizer to start today’s session';
     const root=$('#kiosk-content');
     document.body.dataset.courtFilter=state.filter;
     document.querySelectorAll('[data-filter]').forEach(b=>{
@@ -103,7 +109,11 @@
     });
     if(!e){root.innerHTML='<section class="kiosk-empty"><strong>No active session yet</strong><p>Team assignments will appear here when organizers open a session.</p></section>';renderSearch();return;}
     if(!allTeams().length){root.innerHTML='<section class="kiosk-empty"><strong>Waiting for teams</strong><p>Once organizers publish a round, the team rosters and court assignments will appear here automatically.</p></section>';renderSearch();return;}
-    root.innerHTML=`<div class="kiosk-courts ${state.filter==='all'?'show-both':'show-one'}">${[1,2].filter(c=>state.filter==='all'||state.filter===String(c)).map(renderCourt).join('')}</div>${renderOverflow()}`;
+    const rotating=rotation();
+    const bench=rotating?teamById(rotating.bench_team_id):null;
+    const benchCard=bench?`<section class="kiosk-five-bench" id="kiosk-five-bench"><div><strong>⏳ SITTING OUT · SET ${Number(rotating.wave)}</strong><p>${escapeHtml(moneylessTeamName(bench))} joins Blue on the next transfer. Everyone stays checked in.</p></div><div class="kiosk-bench-players">${(bench.players||[]).map(p=>`<span>${escapeHtml(p.is_placeholder?'Sub needed':p.name)}</span>`).join('')}</div></section>`:'';
+    const notice=rotating?`<div class="kiosk-five-status">🔄 Five-team rotation · Set ${Number(rotating.wave)} · Two courts · One team rests · ${allMatches().filter(m=>Number(m.order)===Number(rotating.wave)&&m.winner_team_id).length} of 2 current scores${allMatches().filter(m=>Number(m.order)===Number(rotating.wave)&&m.winner_team_id).length===2?' · Waiting for organizer to rotate':''}</div>`:'';
+    root.innerHTML=`${notice}<div class="kiosk-courts ${state.filter==='all'?'show-both':'show-one'}">${[1,2].filter(c=>state.filter==='all'||state.filter===String(c)).map(renderCourt).join('')}</div>${benchCard}${renderOverflow()}`;
     if(e.status==='locked'&&!state.readyToScore){root.insertAdjacentHTML('afterbegin','<p class="readonly-warning" role="alert">Scores are read-only. Public scoring requires the V1.32 Supabase migration. Ask an organizer for assistance.</p>');}
     renderSearch();
   }
@@ -111,9 +121,9 @@
     const root=$('#search-results');
     const query=state.search.trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
     if(!query){root.hidden=true;root.innerHTML='';return;}
-    const hits=allTeams().flatMap(t=>(t.players||[]).filter(p=>!p.is_placeholder&&String(p.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase().includes(query)).map(p=>({name:p.name,court:t.court,team:t.number,id:t.id}))).slice(0,12);
+    const hits=allTeams().flatMap(t=>(t.players||[]).filter(p=>!p.is_placeholder&&String(p.name).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase().includes(query)).map(p=>({name:p.name,court:rotation()?(rotation().blue_ids.includes(t.id)?1:rotation().red_ids.includes(t.id)?2:'bench'):t.court,team:t.number,id:t.id}))).slice(0,12);
     root.hidden=false;
-    root.innerHTML=hits.length?hits.map(h=>`<button type="button" data-find-team="${escapeHtml(h.id)}" data-find-court="${Number(h.court)}"><strong>${escapeHtml(h.name)}</strong><span class="search-court-${Number(h.court)}">${courtName(h.court)} · ${escapeHtml(moneylessTeamName(teamById(h.id)))}</span></button>`).join(''):'<span class="no-search-results">No matching player in the published teams.</span>';
+    root.innerHTML=hits.length?hits.map(h=>`<button type="button" data-find-team="${escapeHtml(h.id)}" data-find-court="${escapeHtml(h.court)}"><strong>${escapeHtml(h.name)}</strong><span class="search-court-${Number(h.court)}">${h.court==='bench'?'Sitting out':courtName(h.court)} · ${escapeHtml(moneylessTeamName(teamById(h.id)))}</span></button>`).join(''):'<span class="no-search-results">No matching player in the published teams.</span>';
   }
   function verifyScore(a,b){
     if(!/^\d+$/.test(a)||!/^\d+$/.test(b))throw Error('Enter both scores.');
@@ -153,7 +163,14 @@
   async function loadState(){
     const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;
     if(data?.event&&data.event.date!==today())return {data:{event:null,teams:[],matches:[],roster:[]},ready:false};
-    if(data?.event){const counts=await db.rpc('vmm_get_court_team_counts',{p_event_id:data.event.id});if(counts.error)throw Error(`V1.35 database update required: ${counts.error.message}`);if(!counts.data||counts.data.event_id!==data.event.id)throw Error('Could not verify court settings.');data.event.court_1_team_count=counts.data.court_1_team_count;data.event.court_2_team_count=counts.data.court_2_team_count;if(!['numbers','funny'].includes(counts.data.team_naming_mode))throw Error('RallyRank V1.37 SQL migration required for team names.');data.event.team_naming_mode=counts.data.team_naming_mode;data.event.position_balance=counts.data.position_balance===true;data.event.show_player_positions=counts.data.show_player_positions===true;data.event.capacity=counts.data.capacity;}
+    if(data?.event){const counts=await db.rpc('vmm_get_court_team_counts',{p_event_id:data.event.id});if(counts.error)throw Error(`V1.35 database update required: ${counts.error.message}`);if(!counts.data||counts.data.event_id!==data.event.id)throw Error('Could not verify court settings.');data.event.court_1_team_count=counts.data.court_1_team_count;data.event.court_2_team_count=counts.data.court_2_team_count;if(!['numbers','funny'].includes(counts.data.team_naming_mode))throw Error('RallyRank V1.37 SQL migration required for team names.');data.event.team_naming_mode=counts.data.team_naming_mode;data.event.position_balance=counts.data.position_balance===true;data.event.show_player_positions=counts.data.show_player_positions===true;data.event.capacity=counts.data.capacity;
+      data.event.five_rotation_enabled=counts.data.five_rotation_enabled===true;
+      if(data.event.five_rotation_enabled){
+        const rs=await db.rpc('vmm_get_five_rotation_state',{p_event_id:data.event.id});
+        if(rs.error)throw Error(`RallyRank V1.52 SQL migration required: ${rs.error.message}`);
+        data.five_rotation=rs.data?.active?rs.data:null;
+      }
+    }
     let redo=[],ready=false;
     if(data?.event?.status==='locked'){
       const reply=await db.rpc('vmm_get_public_court_redo_state');
@@ -247,7 +264,7 @@
     document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.modal)closeScore();});
     document.addEventListener('click',e=>{
       const filter=e.target.closest('[data-filter]');if(filter){state.filter=filter.dataset.filter;render();return;}
-      const find=e.target.closest('[data-find-team]');if(find){const name=find.querySelector('strong')?.textContent||'Player',assignment=find.querySelector('span')?.textContent||'';state.filter=find.dataset.findCourt;state.search='';$('#player-search').value='';render();const card=[...document.querySelectorAll('[data-team-id]')].find(x=>x.dataset.teamId===find.dataset.findTeam);if(card){card.classList.add('is-highlighted');card.scrollIntoView({behavior:'smooth',block:'center'});}notify(`${name} · ${assignment}`);return;}
+      const find=e.target.closest('[data-find-team]');if(find){const name=find.querySelector('strong')?.textContent||'Player',assignment=find.querySelector('span')?.textContent||'';state.filter=find.dataset.findCourt==='bench'?'all':find.dataset.findCourt;state.search='';$('#player-search').value='';render();const card=find.dataset.findCourt==='bench'?document.querySelector('#kiosk-five-bench'):[...document.querySelectorAll('[data-team-id]')].find(x=>x.dataset.teamId===find.dataset.findTeam);if(card){card.classList.add('is-highlighted');card.scrollIntoView({behavior:'smooth',block:'center'});}notify(`${name} · ${assignment}`);return;}
       const score=e.target.closest('[data-score-match]');if(score){openScore(score.dataset.scoreMatch);return;}
       const correctionButton=e.target.closest('[data-correction]');if(correctionButton&&!correctionButton.disabled){correction(correctionButton.dataset.correction,Number(correctionButton.dataset.court));return;}
       const adjust=e.target.closest('[data-adjust]');if(adjust){const [side,delta]=adjust.dataset.adjust.split(':');const input=$(`#score-${side}`);const n=Number(input.value)||0;input.value=String(Math.max(0,Math.min(99,n+Number(delta))));updateScoreValidation();return;}

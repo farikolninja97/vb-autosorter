@@ -46,3 +46,13 @@
 .kiosk-team .roster-list li.roster-placeholder .roster-name {color:#ffdfa0}
 .kiosk-team .roster-list li.roster-placeholder small {color:#fff0c4}
 @media(max-width:540px){.kiosk-team .roster-list li.roster-placeholder{padding:6px 5px}}
+
+/* V1.52 — five-team continuous rotation's sitting-out team. */
+.kiosk-five-status{max-width:1920px;margin:0 auto 14px;border:1px solid #4b91c9;background:#162e4d;color:#dceeff;padding:12px 15px;border-radius:11px;font-weight:800;font-size:14px}
+.kiosk-five-bench{max-width:1920px;margin:16px auto 0;padding:15px 19px;border:2px dashed #e9b33e;border-radius:13px;background:#2f2b22;display:flex;align-items:start;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.kiosk-five-bench strong{font-size:13px;letter-spacing:.09em;color:#f9d887}
+.kiosk-five-bench p{font-size:15px;color:#fff;margin:8px 0 0;font-weight:650}
+.kiosk-bench-players{display:flex;flex-wrap:wrap;gap:6px;align-content:start}
+.kiosk-bench-players span{border-radius:7px;background:#ffffff17;border:1px solid #ffffff30;padding:6px 9px;font-size:12px;color:#fff}
+.kiosk-five-bench.is-highlighted{outline:3px solid #e9b33e;outline-offset:3px}
+@media(max-width:540px){.kiosk-five-bench{padding:12px}.kiosk-five-status{font-size:12px}}

@@ -1391,3 +1391,18 @@ html[data-brand="cos"][data-theme="dark"] .court-roster .team-members li.sub-mem
 [data-theme="dark"] .attendance-browse-toggle:hover,[data-theme="dark"] .attendance-browse-toggle[aria-pressed="true"]{background:#355678;border-color:#8ab0d0}
 [data-theme="dark"] .attendance-browse-heading{background:#223c58;color:#d7eaff;border-bottom-color:#41617e}
 @media(max-width:540px){.attendance-results{max-height:min(49dvh,350px)}.attendance-search-wrap > .field{padding-right:126px}.attendance-browse-toggle{right:6px;padding:5px 7px;font-size:11px}}
+
+/* V1.52: Five fixed teams rotate across two courts between scored sets. */
+.five-rotation-status{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:16px 19px;border:1px solid #76a6d8;border-left:5px solid #2c80e0;border-radius:12px;background:var(--panel,#fff);margin:0 0 18px}
+.five-rotation-status strong{font-size:16px;display:block;color:var(--text,#182d48)}
+.five-rotation-status small{display:block;color:var(--muted,#667a8f);margin-top:5px;font-size:12px}
+.five-rotation-bench{padding:16px 19px;margin:15px 0 22px;background:var(--panel,#fff);border:2px dashed #c79e4b;border-radius:12px;color:var(--text,#182d48)}
+.five-rotation-bench h3{font-size:13px;margin:0 0 7px;text-transform:uppercase;letter-spacing:.08em}
+.five-rotation-bench strong{font-size:20px;display:block}
+.five-rotation-bench p{font-size:12px;color:var(--muted,#667a8f);margin:6px 0 0}
+.five-rotation-bench .five-bench-members{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.five-bench-members span{padding:6px 9px;background:var(--panel2,#f5f7fa);border:1px solid var(--line,#dce4ec);border-radius:7px;font-size:12px}
+html[data-theme="dark"] .five-rotation-status,html[data-theme="dark"] .five-rotation-bench{background:#192c42;color:#f0f6ff}
+html[data-theme="dark"] .five-rotation-status strong{color:#f0f6ff}
+html[data-theme="dark"] .five-bench-members span{background:#243850;border-color:#4a607a;color:#f0f6ff}
+@media(max-width:600px){.five-rotation-status .btn{width:100%}.five-rotation-bench{padding:14px}.five-rotation-status{padding:14px}}
