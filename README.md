@@ -1,41 +1,40 @@
-# RallyRank V1.48 — Update Only
+# RallyRank V1.49 — Update Only
 
-**Install on top of your existing V1.47 deployment.** This is not a full replacement of the project or database.
+**Install on top of V1.48.** This is a frontend-only patch.
 
-## What's fixed
+## Changes
 
-1. **Substitute positions:** If a team needs a fill-in, the unpublished preview says `Needed: 🧱 Middle Blocker` (or the actual assigned role). Published Live Courts and the kiosk show that role while **Show positions on Live Courts & kiosk** is ON. When OFF, both public displays remain names-only. The migration repairs missing role values on currently published substitute slots and runs the same repair automatically on future publications. It never overwrites an existing position or a real player's role.
-2. **Kiosk assigned roles:** Fixed a frontend bug reading `show_player_positions` from the wrong level of the public metadata response. The kiosk now uses the same Supabase session flag as Live Courts. Public viewers never receive MMR or private player preference data from this change.
-3. **End Round Early & Remake Teams:** During an unfinished published round, admins see this button in **Check-in** and **Live Courts**. Confirm once, and RallyRank opens the next round with all of today's check-ins and match settings intact and creates a **private team preview**. You must explicitly publish the new teams. You do **not** have to enter scores for unplayed matches.
+1. **Small role-fit dots instead of colored name outlines** in admin Team Preview and admin-visible published rosters. No more highlighted lettering or full-row outlines.
+   - **Green ●** = assigned role matches primary position.
+   - **Yellow ●** = assigned role matches secondary position.
+   - **Red ●** = assigned role was autofilled outside the preferred roles.
+   The published roster's existing bullet is colored rather than adding a duplicate bullet. Public players do not see private preference-fit data.
+2. **Primary-role opportunity percentage** replaces the awkward `Primary role fairness: X/Y` text in Team Preview. This shows what percent of players in the proposed teams **who have not yet received their primary-position assignment this daily session** would receive their primary role in this proposed round. Example: 2 of 3 waiting players => **67%**. A 100% reading when nobody remains waiting explicitly says so. The indicator is hidden when position balancing is off. This is a preview measure, not a guarantee that everybody gets their preference.
+3. Both main and kiosk footer labels display **V1.49**.
 
-### What happens to match results when ending early?
+## Install
 
-- **Already saved scores and MMR changes stay recorded.** An early-ended round with results is archived with its completed and unplayed matches clearly distinguished. Unplayed matches retain `NULL` scores and no winner.
-- **No scores recorded:** the unplayed round is discarded rather than counting as a completed/played round. The next round number still advances.
-- **Fairness:** only teams involved in a recorded match count as having played together or having completed a preferred-role assignment. The archive separately retains the full originally published team roster for audit, even if other teams did not play.
-- The server checks admin authorization, current round number, and completed match count again to protect against another device entering a score in the meantime. If it changed, refresh before trying again.
-
-## Install (SQL FIRST)
-
-1. Back up Supabase and your current GitHub files.
-2. In the correct RallyRank Supabase project, run **`supabase/upgrade-v1.48.sql`** once in SQL Editor. This migration REQUIRES the previous V1.47 (and earlier) migrations.
-3. Copy the changed files in **`github-pages/`** to the root of your GitHub Pages repository, replacing their previous versions:
+1. Open the ZIP. Copy **only** these files from `github-pages/` into the root of your `vb-autosorter` GitHub Pages repository, replacing their older versions:
    - `app.js`
-   - `index.html`
    - `styles.css`
-   - `kiosk.js`
-   - `kiosk.html`
-   - `kiosk.css`
-4. Do **NOT** replace or re-upload `config.js`, `matchmaking.js`, `team-display.js`, `team-names.js`, or other unchanged files.
-5. Refresh both site and kiosk. If an installed kiosk app retains its old version, close and reopen it or clear that site's cache. The footer should show **V1.48**.
+   - `index.html`
+   - `kiosk.html` (version footer only; kiosk logic remains unchanged)
+2. **Keep your existing `config.js`** and all other files, including `matchmaking.js`, `team-display.js`, `team-names.js`, kiosk code, and assets. Never reset or replace the database.
+3. Refresh the website and check that the footer says **V1.49**. If cached on a tablet, close and reopen the kiosk.
 
-## Test after deployment
+**Supabase changes: NONE. No SQL migration is required.**
 
-1. Enable position balancing and **Show positions on Live Courts & kiosk**. Create a practice round with 28 checked-in players / 36 court spots. Confirm substitutes show `Needed: [position]` in both Live Courts and kiosk, and existing players show `Assigned: [position]` in the kiosk.
-2. Turn Show positions OFF and verify the public Live Courts and kiosk hide **both** assigned roles and needed substitute roles. The admin Team Preview still shows assigned roles for review.
-3. Publish a test round, record **one** score, then choose **End Round Early & Remake Teams**. Confirm that score and MMR remain, the other matches are unscored, all check-ins persist, and a new private preview appears.
-4. Try ending an unscored test round, and test one 2+3 court format as well. After a completed round, the regular **Next Teams** path remains available.
+## Quick test
 
-## Verification scope
+1. In Demo Mode enable positional team balancing, generate a private team preview, and confirm one green/yellow/red dot is shown to the left of each real player as appropriate; placeholders have no dot.
+2. Confirm there are no colored outlines on the lettering or around player rows.
+3. Confirm the preview shows `Primary-role opportunity: 67%` for a scenario where 2 of 3 still-waiting players would receive their primary position. The explanatory count should match the percentage.
+4. Publish a practice round with position display enabled; admin-published rosters should have **one** colored bullet per player, not two. Public viewers must not see preference-fit colors.
+5. Turn **Balance teams by volleyball position** off; the percentage and role-fit indicators are not shown. Existing score, MMR, and round workflow are unchanged.
 
-Passed: JavaScript syntax, randomized 2/3-team matchmaking, local browser tests for role-label ON/OFF, preview and published substitutes, one-score and zero-score early remakes, and a 2+3 mixed court configuration. **The SQL migration has not been executed against your live Supabase database**; test there before using it at an event.
+## Checks performed
+
+- `node --check` passed for edited `app.js`.
+- 12 logic, version, and style checks passed (`tests/verify-v149.cjs`).
+- Chromium style/layout tests passed for green/yellow/red indicators, no colored text strokes, one published bullet, and light/dark COS theme at mobile width.
+- Full live Supabase behavior was not tested; these files do not change any database functions.

@@ -109,7 +109,7 @@
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.48';
+  const APP_VERSION='1.49';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -227,7 +227,14 @@
     const real=groups.flat().filter(p=>!p.is_placeholder&&targets.has(p.position||p.primary_position));
     const awaiting=real.filter(p=>!(history[p.id]||[]).includes(p.position||p.primary_position));
     const remaining=awaiting.filter(p=>p.assigned_position!==(p.position||p.primary_position));
-    return `<span>Primary role fairness: ${awaiting.length-remaining.length}/${awaiting.length} pending players covered by this preview · ${remaining.length} still waiting</span>`;
+    // Of people who still need a primary-role opportunity today, what share
+    // would get their PRIMARY role in this proposed round? Never divide by zero.
+    const covered=awaiting.length-remaining.length;
+    const percent=awaiting.length?Math.round(100*covered/awaiting.length):100;
+    const context=awaiting.length
+      ?`${covered} of ${awaiting.length} awaiting players would play their primary role this round`
+      :'No one in this preview is still waiting for their primary role';
+    return `<span class="draft-primary-coverage" title="${safe(context)}">Primary-role opportunity: <strong>${percent}%</strong> <small>· ${safe(context)}</small></span>`;
   }
   function renderTeamDraft(){
     const groups=currentDraft();

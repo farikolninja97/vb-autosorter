@@ -1257,3 +1257,82 @@ html[data-theme=dark] .early-round-banner{background:#362b1b;color:#f3d4a3;borde
 html[data-theme=dark] .btn-early-round{background:#3c2c19;color:#ffd49d;border-color:#9e7745}
 html[data-theme=dark] .sub-required-position{color:#ffc46b!important}
 @media(max-width:590px){.early-round-banner{flex-direction:column;align-items:stretch;padding:12px}.early-round-banner .btn{width:100%}.sub-member-meta{max-width:66%}}
+
+
+/* V1.49 — subtle position-fit dots instead of distracting colored name strokes.
+   Admin-only: CSS never creates preference dots for public viewers because
+   their roster rows do not receive the is-preferred-* class. */
+:root {
+  --role-dot-primary:#16a34a;   /* Green: preferred primary */
+  --role-dot-secondary:#eab308; /* Yellow: preferred secondary */
+  --role-dot-autofilled:#dc3545;/* Red: auto-filled outside preferences */
+}
+/* Fully undo V1.46 name outlines; preserve the site's normal name color. */
+.team-published-member[class*="is-preferred-"] .team-member-name,
+.draft-player[class*="is-preferred-"] .draft-player-details > strong {
+  -webkit-text-stroke:0 transparent!important;
+  text-shadow:none!important;
+  paint-order:normal;
+  --role-letter-outline:transparent;
+}
+.team-published-member.is-preferred-primary,
+.team-published-member.is-preferred-secondary,
+.team-published-member.is-preferred-autofilled,
+.draft-player.is-preferred-primary,
+.draft-player.is-preferred-secondary,
+.draft-player.is-preferred-autofilled {
+  outline:none!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+/* Keep the visibly selected state of the manual draft swap editor. */
+.draft-player.draft-player-selected,
+.draft-player.draft-player-selected[class*="is-preferred-"] {
+  background:#fff0d1!important;
+  border-color:#b68b2d;
+}
+html[data-theme="dark"] .draft-player.draft-player-selected,
+html[data-theme="dark"] .draft-player.draft-player-selected[class*="is-preferred-"] {
+  background:#624c2a!important;
+  border-color:#d0a23b;
+}
+.team-published-member.is-preferred-primary,
+.draft-player.is-preferred-primary {--role-dot:var(--role-dot-primary)}
+.team-published-member.is-preferred-secondary,
+.draft-player.is-preferred-secondary {--role-dot:var(--role-dot-secondary)}
+.team-published-member.is-preferred-autofilled,
+.draft-player.is-preferred-autofilled {--role-dot:var(--role-dot-autofilled)}
+.draft-player[class*="is-preferred-"] .draft-player-details > strong::before {
+  content:"";
+  display:inline-block;
+  vertical-align:middle;
+  width:9px;
+  height:9px;
+  margin-right:7px;
+  margin-top:-2px;
+  border-radius:50%;
+  background:var(--role-dot);
+  box-shadow:0 0 0 1px rgba(0,0,0,.15);
+}
+/* The published roster already has a generic gray list bullet. Color that
+   existing bullet rather than adding a second bullet inside the name. */
+.team-members li.team-published-member[class*="is-preferred-"]::before {
+  width:9px;
+  height:9px;
+  top:4px;
+  background:var(--role-dot);
+  box-shadow:0 0 0 1px rgba(0,0,0,.15);
+}
+/* Legend mirrors the small circular indicators placed beside each name. */
+.draft-role-legend i {
+  width:10px;
+  height:10px;
+  border:0;
+  border-radius:50%;
+  box-shadow:0 0 0 1px rgba(0,0,0,.15);
+}
+.draft-role-legend .role-key-primary {background:var(--role-dot-primary);border:0}
+.draft-role-legend .role-key-secondary {background:var(--role-dot-secondary);border:0}
+.draft-role-legend .role-key-autofilled {background:var(--role-dot-autofilled);border:0}
+.draft-primary-coverage strong {font-weight:900;font-size:1.12em;font-variant-numeric:tabular-nums}
+.draft-primary-coverage small {font-size:inherit;font-weight:500}
