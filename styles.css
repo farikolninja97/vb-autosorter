@@ -1242,3 +1242,18 @@ html[data-theme="dark"] .draft-player.draft-player-selected {background:#624c2a!
 html[data-theme=dark] .overflow-group{background:#362c1d;border-color:#9e7c44;color:#ffe3a7}
 html[data-theme=dark] .overflow-names span{border-color:#957547;background:#48351d}
 @media(max-width:560px){.overflow-group{margin:12px 0;padding:12px}.overflow-names span{font-size:11px;padding:5px 9px}}
+
+/* V1.48: clear substitute role labels and safe, admin-only early-remake action. */
+.sub-member-meta{display:flex;flex-direction:column;gap:3px;align-items:flex-end;text-align:right}
+.sub-member-meta small{font-size:10px;line-height:1.35}
+.sub-required-position{display:block;font-weight:850!important;color:#9c580e!important;font-size:11px!important;white-space:normal}
+.early-round-banner{margin:14px 0 16px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;background:#fff8ee;border:1px solid #ead3b0;border-left:4px solid #c47b26;border-radius:12px;color:#603d15}
+.early-round-banner strong,.early-round-banner small{display:block}
+.early-round-banner strong{font-size:14px;font-weight:850}
+.early-round-banner small{font-size:12px;line-height:1.5;margin-top:3px}
+.btn-early-round{border-color:#cb9a5a;color:#78420d;background:#fff5e6;font-weight:800}
+.btn-early-round:hover:not(:disabled){background:#ffecd2;border-color:#b88344;color:#62360d}
+html[data-theme=dark] .early-round-banner{background:#362b1b;color:#f3d4a3;border-color:#967246}
+html[data-theme=dark] .btn-early-round{background:#3c2c19;color:#ffd49d;border-color:#9e7745}
+html[data-theme=dark] .sub-required-position{color:#ffc46b!important}
+@media(max-width:590px){.early-round-banner{flex-direction:column;align-items:stretch;padding:12px}.early-round-banner .btn{width:100%}.sub-member-meta{max-width:66%}}

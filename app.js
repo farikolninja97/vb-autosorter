@@ -109,7 +109,7 @@
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.47';
+  const APP_VERSION='1.48';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -163,7 +163,7 @@
   // published Live Courts. The preview always shows the assigned role for
   // review, but primary / secondary profile preferences follow the setting.
   function draftMemberInfo(member){
-    if(member.is_placeholder)return 'Unrated placeholder';
+    if(member.is_placeholder)return admin?.position_balance===true&&member.assigned_position?`Unrated placeholder · Needed: ${safe(assignedRoleLabel(member.assigned_position))}`:'Unrated placeholder';
     const parts=[];
     if(admin?.position_balance===true&&pub?.event?.show_player_positions===true){
       const primary=member.position||member.primary_position||'Unspecified';
@@ -321,8 +321,17 @@
         }
       }return;}}catch(e){}demoData=seedDemo();demoData.signups=demoData.players.slice(0,36).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));storeDemo();}
   function storeDemo(){try{localStorage.setItem('rallyrank-demo-v107',JSON.stringify(demoData));}catch(e){}}
+  function archivePlayedTeamIds(archive){
+    if(archive?.ended_early!==true)return null;
+    const ids=new Set();
+    for(const match of archive.matches||[])if(match.winner_team_id){
+      if(match.team_a_id)ids.add(match.team_a_id);
+      if(match.team_b_id)ids.add(match.team_b_id);
+    }
+    return ids;
+  }
   function demoState(){const x=demoData;return {event:x.event?{...x.event,player_count:x.signups.length,capacity:capacityFor(x.event),completed_rounds:x.archives.length}:null,
-    roster:x.signups.map(s=>{const p=x.players.find(p=>p.id===s.player_id);return {id:p.id,name:p.name,checked_at:s.checked_at,team_id:x.teams.find(t=>t.players.some(y=>y.id===p.id))?.id||null,rounds_played:x.archives.filter(a=>a.teams.some(t=>t.players.some(y=>y.id===p.id))).length};}),
+    roster:x.signups.map(s=>{const p=x.players.find(p=>p.id===s.player_id);return {id:p.id,name:p.name,checked_at:s.checked_at,team_id:x.teams.find(t=>t.players.some(y=>y.id===p.id))?.id||null,rounds_played:x.archives.filter(a=>{const played=archivePlayedTeamIds(a);return a.teams.some(t=>(!played||played.has(t.id))&&t.players.some(y=>y.id===p.id));}).length};}),
     // Demo mirrors the safe, names-only attendance field returned by the public RPC.
     checked_in_names:x.signups.map(s=>x.players.find(p=>p.id===s.player_id)?.name).filter(Boolean).sort((a,b)=>a.localeCompare(b)),
     teams:x.teams.map(team=>({...team,players:team.players.map(member=>{const profile=x.players.find(p=>p.id===member.id);return {...member,...(x.event?.position_balance===true&&x.event?.show_player_positions===true&&!member.is_placeholder&&profile?{primary_position:profile.position||'Unspecified',secondary_position:profile.secondary_position||'Unspecified'}:{})};})})),matches:x.matches.map(({mmr_changes,...match})=>match),redo_scores:(x.redo_scores||[]).map(({previous_player_states,...record})=>record),scoreActionsAvailable:true};}
@@ -336,7 +345,7 @@
       if(error)throw Error(`RallyRank V1.35 database migration required: ${error.message}`);
       if(!counts||counts.event_id!==data.event.id)throw Error('The court-format settings could not be verified. Refresh.');
       if(!['numbers','funny'].includes(counts.team_naming_mode))throw Error('RallyRank V1.37 database migration required for team names.');
-      const event={...data.event,court_1_team_count:counts.court_1_team_count,court_2_team_count:counts.court_2_team_count,team_naming_mode:counts.team_naming_mode,position_balance:counts.position_balance===true};
+      const event={...data.event,court_1_team_count:counts.court_1_team_count,court_2_team_count:counts.court_2_team_count,team_naming_mode:counts.team_naming_mode,position_balance:counts.position_balance===true,show_player_positions:counts.show_player_positions===true};
       return {...data,event:{...event,capacity:capacityFor(event)}};
     },
     async getPublic(){
@@ -352,7 +361,7 @@
       if(redoError)return {...state,redo_scores:[],scoreActionsAvailable:false};
       return {...state,redo_scores:Array.isArray(redo)?redo:[],scoreActionsAvailable:true};
     },
-    async getAdmin(){if(demo)return {...demoState(),players:demoData.players,match_changes:demoData.matches.flatMap(m=>(m.mmr_changes||[]).map(c=>({...c,match_id:m.id}))),previous_teams:demoData.archives.flatMap(a=>a.teams.map(t=>t.players.map(p=>p.id))),session_role_history:demoData.archives.reduce((history,round)=>{for(const team of round.teams||[])for(const p of team.players||[]){if(p.is_placeholder||!p.assigned_position)continue;(history[p.id]||=[]).push(p.assigned_position);}return history;},{}),redo_scores:demoData.redo_scores||[],gender_balance:demoData.event?.gender_balance===true,position_balance:demoData.event?.position_balance===true,show_player_positions:demoData.event?.show_player_positions===true,ignore_mmr:demoData.event?.ignore_mmr===true,overflow_enabled:demoData.event?.overflow_enabled===true};
+    async getAdmin(){if(demo)return {...demoState(),players:demoData.players,match_changes:demoData.matches.flatMap(m=>(m.mmr_changes||[]).map(c=>({...c,match_id:m.id}))),previous_teams:demoData.archives.flatMap(a=>{const played=archivePlayedTeamIds(a);return a.teams.filter(t=>!played||played.has(t.id)).map(t=>t.players.map(p=>p.id));}),session_role_history:demoData.archives.reduce((history,round)=>{for(const team of (round.teams||[]).filter(t=>!archivePlayedTeamIds(round)||archivePlayedTeamIds(round).has(t.id)))for(const p of team.players||[]){if(p.is_placeholder||!p.assigned_position)continue;(history[p.id]||=[]).push(p.assigned_position);}return history;},{}),redo_scores:demoData.redo_scores||[],gender_balance:demoData.event?.gender_balance===true,position_balance:demoData.event?.position_balance===true,show_player_positions:demoData.event?.show_player_positions===true,ignore_mmr:demoData.event?.ignore_mmr===true,overflow_enabled:demoData.event?.overflow_enabled===true};
       const {data,error}=await db.rpc('vmm_get_admin_state');if(error)throw error;
       const state=await api.getCourtCounts(data);
       const [{data:changes,error:changesError},{data:redo,error:redoError},{data:preferences,error:preferencesError},{data:roleHistory,error:roleHistoryError}]=await Promise.all([
@@ -579,6 +588,27 @@
       const {error}=await db.rpc('vmm_redo_court_result',{p_event_id:eventId,p_court_number:court,p_expected_match_id:expectedMatchId});
       if(error)throw error;
     },
+    async endRoundEarly(eventId,expectedRound,expectedCompleted){
+      if(demo)return demoAction(()=>{
+        const e=demoData.event;
+        if(!e||e.id!==eventId||e.status!=='locked'||Number(e.round_number)!==expectedRound)throw Error('The round changed. Refresh and try again.');
+        const completed=demoData.matches.filter(m=>Boolean(m.winner_team_id)).length;
+        if(completed!==expectedCompleted||completed===demoData.matches.length)throw Error('Scores or round status changed. Refresh before ending early.');
+        if(completed){
+          const allTeams=structuredClone(demoData.teams);
+          const played=new Set(demoData.matches.filter(m=>m.winner_team_id).flatMap(m=>[m.team_a_id,m.team_b_id]));
+          demoData.archives.push({round:e.round_number,ended_early:true,completed_match_count:completed,
+            teams:allTeams.filter(t=>played.has(t.id)),all_published_teams:allTeams,
+            matches:structuredClone(demoData.matches),changes:structuredClone(demoData.history)});
+        }
+        demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.redo_scores=[];
+        e.round_number++;e.status='open';
+      });
+      const {error}=await db.rpc('vmm_admin_end_round_early',{
+        p_event_id:eventId,p_expected_round:expectedRound,p_expected_completed:expectedCompleted
+      });
+      if(error)throw error;
+    },
     async resetRound(eventId){if(demo)return demoAction(()=>{if(demoData.history.length)throw Error('Undo results before reshuffling.');demoData.teams=[];demoData.matches=[];demoData.redo_scores=[];demoData.event.status='open';});const {error}=await db.rpc('vmm_reset_round',{p_event_id:eventId});if(error)throw error;},
     async nextRound(eventId){if(demo)return demoAction(()=>{
       if(!demoData.event||demoData.event.id!==eventId||demoData.event.status!=='locked'||demoData.matches.length!==totalMatchesFor(demoData.event)||demoData.matches.some(m=>!m.winner_team_id))throw Error('Complete all scheduled matches before starting another round.');
@@ -765,7 +795,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const launch=e.status==='open'?`<section class="panel checkin-launch matchday-action-card" aria-label="Create match teams"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">${draft?'STEP 3 · PRIVATE TEAM PREVIEW':'STEP 2 · CHECK IN PLAYERS'}</span><strong>${draft?'🏐 Your team preview is ready':`✓ ${safe(e.title)} · ${count} checked in`}</strong><small>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · ${count}/${e.capacity} player spots · Round ${Number(e.round_number)||1}</small></div><span class="pill ${ready?'win':'wait'}">${ready?draft?'Ready to publish':'Ready to make teams':`${Math.max(0,needed-count)} more needed`}</span></div>
       <div class="matchday-primary-actions">${draft?`<button class="btn btn-primary" type="button" data-action="checkin-review-teams">✓ Review &amp; publish teams →</button><button class="btn btn-secondary" type="button" data-action="checkin-preview-teams">↻ Reshuffle preview</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-preview-teams" ${ready?'':'disabled'}>⚡ Make teams for Round ${Number(e.round_number)||1}</button>`}<button class="btn btn-secondary" type="button" data-action="open-session-settings">⚙ Match options</button><button class="btn btn-secondary" type="button" data-action="checkin-new-player">＋ New player</button></div>
       <p class="matchday-help">${draft?'Preview is admin-only. Review positions and teammates before publishing; publishing is the final confirmation.':ready?`Uses the options shown below and generates a private preview. ${count<e.capacity?`${e.capacity-count} substitute spots will be filled.`:count>e.capacity?`${count-e.capacity} randomly chosen players will be in overflow for this round.`:''}`:`Check in at least ${needed} players. Positions here update automatically as players arrive.`}</p></section>`
-      :`<section class="panel checkin-launch matchday-action-card ${isRoundComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">STEP 4 · ${isRoundComplete()?'ROUND COMPLETE':'GAMES UNDERWAY'}</span><strong>${isRoundComplete()?'✅ All scores recorded — ready for new teams':'🏐 Teams are playing'}</strong><small>${done} of ${target} matches recorded · Round ${Number(e.round_number)||1} · Check-ins carry over</small></div><span class="pill ${isRoundComplete()?'win':'muted'}">${done}/${target} scored</span></div><div class="matchday-score-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${done}" aria-label="Recorded match results"><span style="width:${target?Math.round(100*done/target):0}%"></span></div><div class="matchday-primary-actions">${isRoundComplete()?`<button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options for next round</button>`:`<button type="button" class="btn btn-primary" data-action="checkin-courts">🔵🔴 View matches &amp; enter scores</button>`}</div><p class="matchday-help">${isRoundComplete()?'Next Teams archives the completed round, keeps every check-in, and prepares a fresh private preview with the same options. You will review before publishing.':'Record all scheduled results (or correct mistakes using Undo/Redo) before generating the next teams.'}</p></section>`;
+      :`<section class="panel checkin-launch matchday-action-card ${isRoundComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">STEP 4 · ${isRoundComplete()?'ROUND COMPLETE':'GAMES UNDERWAY'}</span><strong>${isRoundComplete()?'✅ All scores recorded — ready for new teams':'🏐 Teams are playing'}</strong><small>${done} of ${target} matches recorded · Round ${Number(e.round_number)||1} · Check-ins carry over</small></div><span class="pill ${isRoundComplete()?'win':'muted'}">${done}/${target} scored</span></div><div class="matchday-score-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${done}" aria-label="Recorded match results"><span style="width:${target?Math.round(100*done/target):0}%"></span></div><div class="matchday-primary-actions">${isRoundComplete()?`<button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options for next round</button>`:`<button type="button" class="btn btn-primary" data-action="checkin-courts">🔵🔴 View matches &amp; enter scores</button><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">↻ End round early &amp; remake teams</button>`}</div><p class="matchday-help">${isRoundComplete()?'Next Teams archives the completed round, keeps every check-in, and prepares a fresh private preview with the same options. You will review before publishing.':'Normally, finish all matches before making new teams. If play must stop, use End round early; any recorded scores and MMR are preserved.'}</p></section>`;
     return heading+steps+stats+launch+renderAttendance()+`<div class="checkin-settings-shortcut"><div><strong>⚙ Session rules</strong><span>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · Play to ${Number(e.target_score)||25}</span></div><button type="button" class="btn btn-secondary" data-action="open-session-settings">Change settings</button></div>`;
   }
   // Tier names and icons are PRESENTATION ONLY: ratings are still calculated by Supabase.
@@ -933,6 +963,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       ...(adminGranted?[['checkin-settings','⚙ Session setup','']]:[])
     ];
     const quickNav=shortcuts.length?`<nav class="court-quick-nav" aria-label="Live Courts shortcuts">${shortcuts.map(([target,label,cls])=>`<button type="button" class="${cls}" data-action="court-jump" data-target="${target}">${label}</button>`).join('')}</nav>`:'';
+    const earlyRemakeBanner=adminGranted&&e?.status==='locked'&&!isRoundComplete()?`<section class="early-round-banner" aria-label="Early round controls"><div><strong>Need different teams now?</strong><small>End this round without inventing scores. Any saved scores and MMR stay recorded; everyone stays checked in.</small></div><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">↻ End round early &amp; remake teams</button></section>`:'';
     const roundNextBanner=adminGranted&&isRoundComplete()?`<section class="round-next-banner" aria-label="Next round actions"><div><strong>✅ Round ${Number(e.round_number)||1} complete</strong><small>All ${totalMatchesFor(e)} scores saved. Everyone stays checked in for the next teams.</small></div><div><button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options</button></div></section>`:'';
 
     const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">${hasTeams?'Blue Court 1 · Red Court 2. Teams first, results and corrections below.':'Get ready for matchday: confirm attendance and publish the teams.'}</p></div><div class="live-courts-actions"><a class="btn btn-small btn-primary" href="./kiosk.html" aria-label="Open fullscreen community kiosk">▣ Tablet kiosk</a><button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>${quickNav}`;
@@ -946,11 +977,11 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const gamesDone=matches.filter(m=>m.winner_team_id).length;
       const courtTitle=e.court_mode==='split'?(court===1?'Court 01 · Competitive':'Court 02 · Beginner-friendly'):`Court 0${court}`;
       const header=`<div class="court-header"><div><span class="court-color-label">${court===1?'🔵 BLUE COURT':'🔴 RED COURT'}</span><h3>${courtTitle}</h3><p>${courtSizeFor(e,court)}v${courtSizeFor(e,court)} · ${gamesDone}/${matches.length} matches completed</p></div>${statusPill(gamesDone===matches.length?'DONE':gamesDone>0?'PLAYING':'UP NEXT',gamesDone===matches.length?'win':'muted')}</div>`;
-      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid ${teams.length===2?'two-team-layout':''}">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}${showPublishedPositions()?positionWarningIcons(t.players,true):''}</div>${adminTeamAverage(t)}<ul class="team-members">${sortedTeamMembers(t.players).map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><small>Temporary substitute${assignedRole(p)}</small></li>`:`<li class="team-published-member${showPublishedPositions()?preferenceClass(p,true):''}"${showPublishedPositions()?preferenceTitle(p,true):''}><span class="team-member-name">${safe(p.name)}</span>${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
+      const roster=`<section class="court court-roster court-roster-${court}" aria-label="${courtTitle} teams">${header}<div class="teams-grid ${teams.length===2?'two-team-layout':''}">${teams.map(t=>`<div class="team"><div class="team-title">${safe(teamName(t))}${showPublishedPositions()?positionWarningIcons(t.players,true):''}</div>${adminTeamAverage(t)}<ul class="team-members">${sortedTeamMembers(t.players).map(p=>p.is_placeholder?`<li class="sub-member"><span>✳ Sub needed</span><span class="sub-member-meta"><small>Temporary substitute</small>${showPublishedPositions()&&p.assigned_position?`<small class="sub-required-position">Needed: ${safe(assignedRoleLabel(p.assigned_position))}</small>`:''}</span></li>`:`<li class="team-published-member${showPublishedPositions()?preferenceClass(p,true):''}"${showPublishedPositions()?preferenceTitle(p,true):''}><span class="team-member-name">${safe(p.name)}</span>${assignedRole(p)}${livePlayerPositions(p)}</li>`).join('')}</ul></div>`).join('')}</div></section>`;
       const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of ${matches.length} complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div>${scoreCorrectionPanel(court)}</section>`;
       return {roster,schedule};
     });
-    return `${title}${roundNextBanner}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All ${pub.teams.length} teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>${renderPublishedOverflow()}
+    return `${title}${roundNextBanner}${earlyRemakeBanner}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>All ${pub.teams.length} teams on both courts, at a glance.</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>${renderPublishedOverflow()}
       <div class="court-matches-heading"><h3>Live matches & results</h3><p>Target ${e.target_score||25} · Win by 2. ${canScore?'Enter final scores directly below each match.':'Follow the match order and final scores.'}</p></div>
       ${canScore?'<div class="courts-community-notice">🏐 <strong>Community scoring is on.</strong> Anyone can record final scores or use Undo/Redo. Double-check the court and teams before saving.</div>':e.status==='locked'&&!demo?'<div class="courts-community-notice" role="alert">⚠ Public scoring is not available yet. Ask an admin to install the V1.32 Supabase SQL update.</div>':''}
       <div class="courts-layout courts-matches-layout">${groups.map(g=>g.schedule).join('')}</div>
@@ -1185,6 +1216,26 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     return `<div class="form-stack"><label class="label-input" for="player-search">Find player</label><input class="field" id="player-search" type="search" placeholder="Search any name" value="${safe(searchText)}" autocomplete="off"/><div class="profile-list-meta"><strong class="profile-count" id="profile-result-count">${searchText.trim()?`${count} matching ${count===1?'player':'players'}`:`Showing ${visible.length} of ${arr.length} players`}</strong>${showToggle}</div></div><div class="admin-roster" id="profile-results" style="margin-top:15px">${playerCards||'<p class="subtle">No matching player profiles.</p>'}</div>`;
   }
   async function act(job,message){if(mutating)return false;mutating=true;try{await job();flash(message);await refresh();announceChange(message==='Website theme saved for everyone.'?'theme':'state');return true;}catch(e){flash(errText(e),true);return false;}finally{mutating=false;}}
+  async function startEarlyRemake(){
+    const e=pub?.event;
+    if(!adminGranted||mutating||!e||e.status!=='locked'||isRoundComplete()){
+      flash('Only admins can end an unfinished live round. Refresh if scores have changed.',true);return;
+    }
+    const eventId=e.id,previousRound=Number(e.round_number)||1;
+    const completed=(pub.matches||[]).filter(m=>Boolean(m.winner_team_id)).length;
+    const unfinished=(pub.matches||[]).length-completed;
+    const answer=confirm(`END ROUND ${previousRound} EARLY?\n\n${completed} recorded match(es) and MMR changes will be kept.\n${unfinished} unplayed match(es) will NOT be scored.\nAll player check-ins remain for the next round.\n\nNew teams will be generated privately for review; nothing publishes automatically.\n\nContinue?`);
+    if(!answer)return;
+    document.getElementById('checkin-settings')?.close();
+    const success=await act(()=>api.endRoundEarly(eventId,previousRound,completed),`Round ${previousRound} ended early. ${completed} saved result(s) preserved; check-ins retained.`);
+    if(!success||!pub?.event||pub.event.id!==eventId||pub.event.status!=='open'||Number(pub.event.round_number)!==previousRound+1)return;
+    discardDraft();lockManualSwaps();draftStale=false;
+    if((pub.roster||[]).length<minimumPlayersFor(pub.event)){
+      switchTab('signup');flash('Round ended early. Check in enough players before remaking teams.');return;
+    }
+    switchTab('courts');
+    await handleGenerate();
+  }
   async function startNextTeams(customize=false){
     if(!adminGranted||mutating||!isRoundComplete()){
       flash('Finish every scheduled match before starting the next round.',true);return;
@@ -1298,6 +1349,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       document.getElementById('checkin-settings')?.close();
       switchTab('courts');await handleGenerate();
     }break;
+    case 'end-round-early':await startEarlyRemake();break;
     case 'next-teams-fast':await startNextTeams(false);break;
     case 'next-round-customize':await startNextTeams(true);break;
     case 'checkin-review-teams':if(adminGranted&&currentDraft()){

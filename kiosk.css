@@ -28,3 +28,7 @@
 .kiosk-overflow-names{display:flex;flex-wrap:wrap;gap:9px}
 .kiosk-overflow-names span{display:inline-flex;background:#463821;border:1px solid #ad8443;border-radius:24px;padding:8px 12px;color:#fff1cf;font-weight:750;font-size:14px}
 @media(max-width:540px){.kiosk-overflow{padding:13px;margin-top:9px}.kiosk-overflow-names span{font-size:12px;padding:7px 10px}}
+
+/* V1.48: make missing substitute roles easy to read on the kiosk. */
+.roster-list .sub-required-position{color:#ffde94;font-size:11px;font-weight:850;line-height:1.35}
+.roster-list .assigned-position{color:#c9e6ff;font-size:11px;font-weight:750}

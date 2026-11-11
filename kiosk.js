@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.47';
+  const VERSION='1.48';
   const $=selector=>document.querySelector(selector);
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Denver',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -60,7 +60,7 @@
   function renderTeam(team,court){
     return `<section class="kiosk-team" data-team-id="${escapeHtml(team.id)}" aria-label="${courtName(court)} ${moneylessTeamName(team)}">
       <h3>${escapeHtml(moneylessTeamName(team))}</h3>
-      <ol class="roster-list">${window.RallyTeamDisplay.sort(team.players||[],state.data?.event?.position_balance===true).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${state.data?.event?.position_balance===true&&state.data?.event?.show_player_positions===true&&player.assigned_position?`<small>${escapeHtml(assignedRoleLabel(player.assigned_position))}</small>`:''}</li>`).join('')}</ol>
+      <ol class="roster-list">${window.RallyTeamDisplay.sort(team.players||[],state.data?.event?.position_balance===true).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${state.data?.event?.position_balance===true&&state.data?.event?.show_player_positions===true&&player.assigned_position?`<small class="${player.is_placeholder?'sub-required-position':'assigned-position'}">${player.is_placeholder?'Needed: ':'Assigned: '}${escapeHtml(assignedRoleLabel(player.assigned_position))}</small>`:''}</li>`).join('')}</ol>
     </section>`;
   }
   function renderCourt(court){
@@ -153,7 +153,7 @@
   async function loadState(){
     const {data,error}=await db.rpc('vmm_get_state');if(error)throw error;
     if(data?.event&&data.event.date!==today())return {data:{event:null,teams:[],matches:[],roster:[]},ready:false};
-    if(data?.event){const counts=await db.rpc('vmm_get_court_team_counts',{p_event_id:data.event.id});if(counts.error)throw Error(`V1.35 database update required: ${counts.error.message}`);if(!counts.data||counts.data.event_id!==data.event.id)throw Error('Could not verify court settings.');data.event.court_1_team_count=counts.data.court_1_team_count;data.event.court_2_team_count=counts.data.court_2_team_count;if(!['numbers','funny'].includes(counts.data.team_naming_mode))throw Error('RallyRank V1.37 SQL migration required for team names.');data.event.team_naming_mode=counts.data.team_naming_mode;data.event.position_balance=counts.data.position_balance===true;data.event.show_player_positions=data.event.show_player_positions===true;data.event.capacity=counts.data.capacity;}
+    if(data?.event){const counts=await db.rpc('vmm_get_court_team_counts',{p_event_id:data.event.id});if(counts.error)throw Error(`V1.35 database update required: ${counts.error.message}`);if(!counts.data||counts.data.event_id!==data.event.id)throw Error('Could not verify court settings.');data.event.court_1_team_count=counts.data.court_1_team_count;data.event.court_2_team_count=counts.data.court_2_team_count;if(!['numbers','funny'].includes(counts.data.team_naming_mode))throw Error('RallyRank V1.37 SQL migration required for team names.');data.event.team_naming_mode=counts.data.team_naming_mode;data.event.position_balance=counts.data.position_balance===true;data.event.show_player_positions=counts.data.show_player_positions===true;data.event.capacity=counts.data.capacity;}
     let redo=[],ready=false;
     if(data?.event?.status==='locked'){
       const reply=await db.rpc('vmm_get_public_court_redo_state');
