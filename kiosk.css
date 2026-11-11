@@ -60,3 +60,9 @@
 /* V1.53: resting team displays newly vacated roster positions. */
 .kiosk-bench-players .kiosk-bench-needed{border:2px solid #e5b438;background:#47391d;color:#ffe29c;border-radius:8px;padding:8px;font-weight:800}
 .kiosk-bench-players small{display:block;font-size:10px;margin-top:4px;color:#ffd99c}
+
+/* V1.56 — show court assignment first, then optional player preferences. */
+.roster-list .assigned-position{color:#c9e6ff;font-weight:850}
+.roster-list .kiosk-position-preferences{color:#9eafc8;font-size:10px;font-weight:550;line-height:1.4;padding-top:2px}
+.kiosk-bench-players .assigned-position{font-weight:800;color:#c9e6ff}
+.kiosk-bench-players .kiosk-position-preferences{font-size:10px;line-height:1.3;color:#a7bad1;overflow-wrap:anywhere}

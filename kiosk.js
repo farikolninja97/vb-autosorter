@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.55';
+  const VERSION='1.56';
   const $=selector=>document.querySelector(selector);
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Denver',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -62,10 +62,25 @@
       ${ready?`<button type="button" class="score-trigger" data-score-match="${escapeHtml(m.id)}">✎ Enter final score</button>`:''}
     </article>`;
   }
+  // V1.56: assigned on-court role first, optional profile preferences second.
+  // Never infer a position: only show values from the published session state.
+  // The same visibility setting gates both the main court and resting team.
+  function kioskPositionDetails(player){
+    const event=state.data?.event;
+    if(event?.position_balance!==true||event?.show_player_positions!==true)return '';
+    const first=player.assigned_position
+      ?`<small class="${player.is_placeholder?'sub-required-position':'assigned-position'}">${player.is_placeholder?'Needed: ':'🏐 Assigned: '}${escapeHtml(assignedRoleLabel(player.assigned_position))}</small>`
+      :'';
+    if(player.is_placeholder)return first;
+    const primary=player.primary_position||'Unspecified';
+    const secondary=player.secondary_position||'Unspecified';
+    const prefs=primary==='Unspecified'&&secondary==='Unspecified'?'':`<small class="kiosk-position-preferences">Primary: ${escapeHtml(primary)} · Secondary: ${escapeHtml(secondary)}</small>`;
+    return first+prefs;
+  }
   function renderTeam(team,court){
     return `<section class="kiosk-team" data-team-id="${escapeHtml(team.id)}" aria-label="${courtName(court)} ${moneylessTeamName(team)}">
       <h3>${escapeHtml(moneylessTeamName(team))}</h3>
-      <ol class="roster-list">${window.RallyTeamDisplay.sort(team.players||[],state.data?.event?.position_balance===true).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${state.data?.event?.position_balance===true&&state.data?.event?.show_player_positions===true&&player.assigned_position?`<small class="${player.is_placeholder?'sub-required-position':'assigned-position'}">${player.is_placeholder?'Needed: ':'Assigned: '}${escapeHtml(assignedRoleLabel(player.assigned_position))}</small>`:''}</li>`).join('')}</ol>
+      <ol class="roster-list">${window.RallyTeamDisplay.sort(team.players||[],state.data?.event?.position_balance===true).map(player=>`<li class="${player.is_placeholder?'roster-placeholder':''}"><span class="roster-name">${escapeHtml(player.is_placeholder?'Sub needed':player.name)}</span>${kioskPositionDetails(player)}</li>`).join('')}</ol>
     </section>`;
   }
   function renderCourt(court){
@@ -111,7 +126,7 @@
     if(!allTeams().length){root.innerHTML='<section class="kiosk-empty"><strong>Waiting for teams</strong><p>Once organizers publish a round, the team rosters and court assignments will appear here automatically.</p></section>';renderSearch();return;}
     const rotating=rotation();
     const bench=rotating?teamById(rotating.bench_team_id):null;
-    const benchCard=bench?`<section class="kiosk-five-bench" id="kiosk-five-bench"><div><strong>⏳ SITTING OUT · SET ${Number(rotating.wave)}</strong><p>${escapeHtml(moneylessTeamName(bench))} joins Blue on the next transfer. The resting team receives empty slots when players transfer.</p></div><div class="kiosk-bench-players">${(bench.players||[]).map(p=>p.is_placeholder?`<span class="kiosk-bench-needed">✳ Sub needed${e.position_balance===true&&e.show_player_positions===true&&p.assigned_position?`<small>Needed: ${escapeHtml(assignedRoleLabel(p.assigned_position))}</small>`:''}</span>`:`<span>${escapeHtml(p.name)}${e.position_balance===true&&e.show_player_positions===true&&p.assigned_position?`<small>${escapeHtml(assignedRoleLabel(p.assigned_position))}</small>`:''}</span>`).join('')}</div></section>`:'';
+    const benchCard=bench?`<section class="kiosk-five-bench" id="kiosk-five-bench"><div><strong>⏳ SITTING OUT · SET ${Number(rotating.wave)}</strong><p>${escapeHtml(moneylessTeamName(bench))} joins Blue on the next transfer. The resting team receives empty slots when players transfer.</p></div><div class="kiosk-bench-players">${(bench.players||[]).map(p=>`<span class="${p.is_placeholder?'kiosk-bench-needed':''}">${p.is_placeholder?'✳ Sub needed':escapeHtml(p.name)}${kioskPositionDetails(p)}</span>`).join('')}</div></section>`:'';
     const notice=rotating?`<div class="kiosk-five-status">🔄 Five-team rotation · Set ${Number(rotating.wave)} · Two courts · One team rests · ${allMatches().filter(m=>Number(m.order)===Number(rotating.wave)&&m.winner_team_id).length} of 2 current scores${allMatches().filter(m=>Number(m.order)===Number(rotating.wave)&&m.winner_team_id).length===2?' · Waiting for organizer to rotate':''}</div>`:'';
     root.innerHTML=`${notice}<div class="kiosk-courts ${state.filter==='all'?'show-both':'show-one'}">${[1,2].filter(c=>state.filter==='all'||state.filter===String(c)).map(renderCourt).join('')}</div>${benchCard}${renderOverflow()}`;
     if(e.status==='locked'&&!state.readyToScore){root.insertAdjacentHTML('afterbegin','<p class="readonly-warning" role="alert">Scores are read-only. Public scoring requires the V1.32 Supabase migration. Ask an organizer for assistance.</p>');}

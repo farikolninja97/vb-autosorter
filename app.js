@@ -113,7 +113,7 @@
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.55';
+  const APP_VERSION='1.56';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -165,21 +165,23 @@
     if(panel)panel.innerHTML=renderTeamDraft();
   }
   function draftMemberLabel(p){return p.is_placeholder?'Sub needed':p.name;}
-  // Position-detail visibility applies to the PRIVATE preview as well as
-  // published Live Courts. The preview always shows the assigned role for
-  // review, but primary / secondary profile preferences follow the setting.
+  // V1.56: ALWAYS put the assigned court role before profile preferences.
+  // Private Team Preview shows the assigned role for review; primary/secondary
+  // are shown underneath only when the session visibility option is ON.
   function draftMemberInfo(member){
-    if(member.is_placeholder)return admin?.position_balance===true&&member.assigned_position?`Unrated placeholder · Needed: ${safe(assignedRoleLabel(member.assigned_position))}`:'Unrated placeholder';
+    if(member.is_placeholder)return admin?.position_balance===true&&member.assigned_position
+      ?`<span class="draft-role-first">Needed: ${safe(assignedRoleLabel(member.assigned_position))}</span><span class="draft-role-note">Unrated substitute slot</span>`
+      :'<span class="draft-role-note">Unrated substitute slot</span>';
     const parts=[];
+    if(admin?.position_balance===true&&member.assigned_position)
+      parts.push(`<span class="draft-role-first">🏐 Assigned: ${safe(assignedRoleLabel(member.assigned_position))}</span>`);
     if(admin?.position_balance===true&&pub?.event?.show_player_positions===true){
       const primary=member.position||member.primary_position||'Unspecified';
       const secondary=member.secondary_position||'Unspecified';
-      parts.push(`${safe(primary)}${secondary!=='Unspecified'?` / ${safe(secondary)}`:''}`);
+      parts.push(`<span class="draft-role-preferences">Primary: ${safe(primary)} · Secondary: ${safe(secondary)}</span>`);
     }
-    if(admin?.position_balance===true&&member.assigned_position)
-      parts.push(`Assigned: ${safe(assignedRoleLabel(member.assigned_position))}`);
-    if(showMmr)parts.push(`${Number(member.mmr)} MMR`);
-    return parts.join(' · ');
+    if(showMmr)parts.push(`<span class="draft-role-mmr">${Number(member.mmr)} MMR</span>`);
+    return parts.join('');
   }
   // These warnings are admin-only; player profile preferences never leak to the kiosk.
   function positionWarnings(team,published=false){
@@ -1057,6 +1059,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     if(!showPublishedPositions()||member?.is_placeholder)return '';
     const primary=member.primary_position||'Unspecified';
     const secondary=member.secondary_position||'Unspecified';
+    if(primary==='Unspecified'&&secondary==='Unspecified')return '';
     return `<small class="team-preference">Primary: ${safe(primary)} · Secondary: ${safe(secondary)}</small>`;
   }
   // Assigned roles are session-specific, public court information. They are
