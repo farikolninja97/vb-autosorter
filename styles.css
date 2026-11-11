@@ -1429,3 +1429,8 @@ html[data-theme="dark"] .five-bench-members .five-bench-needed{background:#45351
 .rotation-transfer-dialog .transfer-empty{padding:18px;border:1px dashed var(--line,#dce4ec);border-radius:9px}
 html[data-theme="dark"] .rotation-transfer-dialog .transfer-about{background:#25364e;color:#f4f8ff}
 @media(max-width:600px){.rotation-transfer-dialog .transfer-slot{grid-template-columns:1fr;gap:7px}.rotation-transfer-dialog .session-dialog-footer{gap:8px;flex-wrap:wrap}.rotation-transfer-dialog .session-dialog-footer button{flex:1}}
+
+/* V1.55: make invisible/missing five-team role labels repairable in one tap. */
+.rotation-role-repair{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:12px 0;padding:12px 14px;border:1px solid #e5b845;border-radius:12px;background:rgba(238,178,34,.10);font-weight:700;font-size:13px}
+.rotation-role-repair .btn{white-space:normal;text-align:center}
+@media(max-width:560px){.rotation-role-repair .btn{width:100%}}

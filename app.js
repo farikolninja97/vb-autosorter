@@ -113,7 +113,7 @@
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.54';
+  const APP_VERSION='1.55';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -353,6 +353,22 @@
     // Demo mirrors the safe, names-only attendance field returned by the public RPC.
     checked_in_names:x.signups.map(s=>x.players.find(p=>p.id===s.player_id)?.name).filter(Boolean).sort((a,b)=>a.localeCompare(b)),
     five_rotation:x.five_rotation||null,teams:x.teams.map(team=>({...team,players:team.players.map(member=>{const profile=x.players.find(p=>p.id===member.id);return {...member,...(x.event?.position_balance===true&&x.event?.show_player_positions===true&&!member.is_placeholder&&profile?{primary_position:profile.position||'Unspecified',secondary_position:profile.secondary_position||'Unspecified'}:{})};})})),matches:x.matches.map(({mmr_changes,...match})=>match),redo_scores:(x.redo_scores||[]).map(({previous_player_states,...record})=>record),scoreActionsAvailable:true};}
+  // V1.55: Existing 5-team sessions created with older defaults have no
+  // assigned positions to display. Rebuild missing roles from each real player
+  // profile; never mistake a placeholder for a permanent registered player.
+  function restoreDemoFivePositions(){
+    for(const team of demoData.teams||[]){
+      if(!(team.players||[]).some(p=>!p.assigned_position))continue;
+      const profiles=team.players.map(member=>{
+        const profile=member.is_placeholder?null:demoData.players.find(p=>p.id===member.id);
+        return {...(profile||{}),...member};
+      });
+      const reassigned=window.RallyMath.assignTeamPositions(profiles);
+      team.players=team.players.map((member,index)=>({...member,
+        assigned_position:member.assigned_position||reassigned[index].assigned_position||null
+      }));
+    }
+  }
   function demoLeaderboard(){return [...demoData.players].sort((a,b)=>b.mmr-a.mmr||b.wins-a.wins||a.name.localeCompare(b.name)).map(p=>({id:p.id,name:p.name,position:p.position||'Unspecified',wins:p.wins,losses:p.losses,mmr:p.mmr}));}
   function average(team){const registered=team.players.filter(p=>!p.is_placeholder).map(p=>demoData.players.find(x=>x.id===p.id));if(!registered.length)throw Error('Each team needs a registered player.');return registered.reduce((n,p)=>n+p.mmr,0)/registered.length;}
   function demoAction(fn){fn();storeDemo();return Promise.resolve(null);}
@@ -469,7 +485,7 @@
     });
       const {error}=await db.rpc('vmm_admin_delete_player',{p_player_id:pid});if(error)throw error;
     },
-    async createEvent(title,date,size,size2=size,count1=3,count2=3,namingMode='numbers',ignoreMmr=false,fiveEnabled=false){if(date!==localDate())throw Error('Daily sessions must use today’s Colorado date.');if(!['numbers','funny'].includes(namingMode))throw Error('Choose a valid team naming style.');if(![count1,count2].every(n=>[2,3].includes(n)))throw Error('Choose 2 or 3 teams per court.');if(fiveEnabled&&(size!==6||size2!==6||count1!==2||count2!==3))throw Error('Five-team rotation requires Blue 2 teams, Red 3 teams, both 6v6.');if(demo)return demoAction(()=>{if(demoData.event&&isTodayEvent(demoData.event))return;demoData.event={id:id(),title,date,team_size:size,court2_team_size:size2,court_1_team_count:count1,court_2_team_count:count2,team_naming_mode:namingMode,ignore_mmr:ignoreMmr,overflow_enabled:false,five_rotation_enabled:fiveEnabled,court_mode:'mixed',gender_balance:true,position_balance:false,show_player_positions:false,target_score:25,round_number:1,duration_minutes:180,status:'open'};demoData.signups=[];demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.redo_scores=[];demoData.archives=[];demoData.five_rotation=null;});const args={p_title:title,p_court1_size:size,p_court2_size:size2,p_court1_teams:count1,p_court2_teams:count2,p_team_naming_mode:namingMode,p_ignore_mmr:Boolean(ignoreMmr)};
+    async createEvent(title,date,size,size2=size,count1=3,count2=3,namingMode='numbers',ignoreMmr=false,fiveEnabled=false){if(date!==localDate())throw Error('Daily sessions must use today’s Colorado date.');if(!['numbers','funny'].includes(namingMode))throw Error('Choose a valid team naming style.');if(![count1,count2].every(n=>[2,3].includes(n)))throw Error('Choose 2 or 3 teams per court.');if(fiveEnabled&&(size!==6||size2!==6||count1!==2||count2!==3))throw Error('Five-team rotation requires Blue 2 teams, Red 3 teams, both 6v6.');if(demo)return demoAction(()=>{if(demoData.event&&isTodayEvent(demoData.event))return;demoData.event={id:id(),title,date,team_size:size,court2_team_size:size2,court_1_team_count:count1,court_2_team_count:count2,team_naming_mode:namingMode,ignore_mmr:ignoreMmr,overflow_enabled:false,five_rotation_enabled:fiveEnabled,court_mode:'mixed',gender_balance:true,position_balance:Boolean(fiveEnabled),show_player_positions:Boolean(fiveEnabled),target_score:25,round_number:1,duration_minutes:180,status:'open'};demoData.signups=[];demoData.teams=[];demoData.matches=[];demoData.history=[];demoData.redo_scores=[];demoData.archives=[];demoData.five_rotation=null;});const args={p_title:title,p_court1_size:size,p_court2_size:size2,p_court1_teams:count1,p_court2_teams:count2,p_team_naming_mode:namingMode,p_ignore_mmr:Boolean(ignoreMmr)};
       const {error}=await db.rpc(fiveEnabled?'vmm_start_daily_event_five':'vmm_start_daily_event',fiveEnabled?{...args,p_five_rotation:true}:args);if(error)throw error;},
     async setFiveRotation(eventId,enabled){
       if(typeof enabled!=='boolean')throw Error('Select On or Off for the five-team rotation.');
@@ -479,8 +495,21 @@
         if(enabled&&(courtCountFor(e,1)!==2||courtCountFor(e,2)!==3||courtSizeFor(e,1)!==6||courtSizeFor(e,2)!==6))
           throw Error('Five-team rotation needs Blue 2 teams, Red 3 teams, both 6v6.');
         e.five_rotation_enabled=enabled;
+        // Five-team setup is position-aware by default; admins may switch it off before publishing.
+        if(enabled){e.position_balance=true;e.show_player_positions=true;}
       });
       const {error}=await db.rpc('vmm_set_five_rotation',{p_event_id:eventId,p_enabled:enabled});
+      if(error)throw error;
+    },
+    async enableFiveRotationPositions(eventId){
+      if(demo)return demoAction(()=>{
+        const e=demoData.event;
+        if(!e||e.id!==eventId||!e.five_rotation_enabled||e.status!=='locked'||!demoData.five_rotation?.active)
+          throw Error('An active five-team rotation is required.');
+        e.position_balance=true;e.show_player_positions=true;
+        restoreDemoFivePositions();
+      });
+      const {error}=await db.rpc('vmm_v155_enable_rotation_positions',{p_event_id:eventId});
       if(error)throw error;
     },
     async setOverflowMode(eventId,enabled){
@@ -1049,6 +1078,9 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const earlyRemakeBanner=adminGranted&&e?.status==='locked'&&!fiveRotation()&&!isRoundComplete()?`<section class="early-round-banner" aria-label="Early round controls"><div><strong>Need different teams now?</strong><small>End this round without inventing scores. Any saved scores and MMR stay recorded; everyone stays checked in.</small></div><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">↻ End round early &amp; remake teams</button></section>`:'';
     const roundNextBanner=adminGranted&&isRoundComplete()?`<section class="round-next-banner" aria-label="Next round actions"><div><strong>✅ Round ${Number(e.round_number)||1} complete</strong><small>All ${totalMatchesFor(e)} scores saved. Everyone stays checked in for the next teams.</small></div><div><button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options</button></div></section>`:'';
 
+    const rolesMissing=fiveRotation()&&(pub.teams||[]).some(t=>(t.players||[]).some(p=>!p.assigned_position));
+    const showRoleRepair=adminGranted&&fiveRotation()&&(!showPublishedPositions()||rolesMissing);
+    const roleRepair=showRoleRepair?`<section class="rotation-role-repair" role="status"><span>⚠ Assigned positions ${!showPublishedPositions()?'are hidden in this session':'are missing from some published rosters'}.</span><button type="button" class="btn btn-primary btn-small" data-action="enable-rotation-roles">🏐 Show &amp; restore assigned positions</button></section>`:'';
     const rotationBanner=fiveRotation()?`<section class="five-rotation-status" aria-label="Five-team rotation status"><div><strong>🔄 Five-team rotation · Set ${Number(pub.five_rotation.wave)}</strong><small>Two games per set · Random or manual permanent transfers fill open spots; the resting team inherits vacancies</small></div><div class="five-rotation-actions">${adminGranted?`<button type="button" class="btn btn-secondary" data-action="end-round-early">⏹ End rotation early · Remake teams</button><button type="button" class="btn btn-secondary" data-action="manual-rotation-transfers" ${isRotationWaveComplete()?'':'disabled'}>👥 Manual transfers${rotationManualKey===rotationSelectionKey()&&rotationManualPlan.length?` (${rotationManualPlan.length})`:''}</button>`:''}${adminGranted&&isRotationWaveComplete()?`<button type="button" class="btn btn-primary" data-action="rotate-five-teams">↻ Rotate to next games</button>`:isRotationWaveComplete()?'<span class="pill win">Both scores saved · Waiting for organizer</span>':'<span class="pill muted">Score both courts to advance</span>'}</div></section>`:'';
     const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">${hasTeams?'Blue Court 1 · Red Court 2. Teams first, results and corrections below.':'Get ready for matchday: confirm attendance and publish the teams.'}</p></div><div class="live-courts-actions"><a class="btn btn-small btn-primary" href="./kiosk.html" aria-label="Open fullscreen community kiosk">▣ Tablet kiosk</a><button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>${quickNav}`;
     // Ratings belong ONLY to Live Courts, never to the Admin tab. Keep this block after scores.
@@ -1066,7 +1098,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       const schedule=`<section id="court-${court}-matches" class="court court-schedule court-schedule-${court}" aria-label="${courtTitle} matches"><div class="court-schedule-head"><h3>${court===1?'🔵 BLUE':'🔴 RED'} · ${courtTitle} · Matches</h3><span>${gamesDone} of ${matches.length} complete</span></div><div class="match-list">${matches.map(m=>renderMatch(m,canScore)).join('')}</div>${scoreCorrectionPanel(court)}</section>`;
       return {roster,schedule};
     });
-    return `${title}${rotationBanner}${roundNextBanner}${earlyRemakeBanner}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>${fiveRotation()?'Two teams on each court; the fifth team sits out and may transfer players to fill the next lineup.':'All '+pub.teams.length+' teams on both courts, at a glance.'}</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>${fiveRotation()?`<section class="five-rotation-bench"><h3>⏳ Sitting out this set</h3><strong>${safe(teamName(teamById(pub.five_rotation.bench_team_id)))}</strong><p>Next transfer brings this team onto Blue Court. Players who transfer out leave yellow Sub needed slots here, and the next resting team can fill them.</p><div class="five-bench-members">${(teamById(pub.five_rotation.bench_team_id)?.players||[]).map(member=>member.is_placeholder?`<span class="five-bench-needed">✳ Sub needed${showPublishedPositions()&&member.assigned_position?`<small>Needed: ${safe(assignedRoleLabel(member.assigned_position))}</small>`:''}</span>`:`<span>${safe(member.name)}${showPublishedPositions()&&member.assigned_position?`<small>${safe(assignedRoleLabel(member.assigned_position))}</small>`:''}</span>`).join('')}</div></section>`:''}${renderPublishedOverflow()}
+    return `${title}${rotationBanner}${roleRepair}${roundNextBanner}${earlyRemakeBanner}<div class="court-roster-heading" id="court-team-rosters"><h3>Team assignments</h3><p>${fiveRotation()?'Two teams on each court; the fifth team sits out and may transfer players to fill the next lineup.':'All '+pub.teams.length+' teams on both courts, at a glance.'}</p></div><div class="courts-layout courts-roster-layout">${groups.map(g=>g.roster).join('')}</div>${fiveRotation()?`<section class="five-rotation-bench"><h3>⏳ Sitting out this set</h3><strong>${safe(teamName(teamById(pub.five_rotation.bench_team_id)))}</strong><p>Next transfer brings this team onto Blue Court. Players who transfer out leave yellow Sub needed slots here, and the next resting team can fill them.</p><div class="five-bench-members">${(teamById(pub.five_rotation.bench_team_id)?.players||[]).map(member=>member.is_placeholder?`<span class="five-bench-needed">✳ Sub needed${showPublishedPositions()&&member.assigned_position?`<small>Needed: ${safe(assignedRoleLabel(member.assigned_position))}</small>`:''}</span>`:`<span>${safe(member.name)}${showPublishedPositions()&&member.assigned_position?`<small>${safe(assignedRoleLabel(member.assigned_position))}</small>`:''}</span>`).join('')}</div></section>`:''}${renderPublishedOverflow()}
       <div class="court-matches-heading"><h3>Live matches & results</h3><p>Target ${e.target_score||25} · Win by 2. ${canScore?'Enter final scores directly below each match.':'Follow the match order and final scores.'}</p></div>
       ${canScore?'<div class="courts-community-notice">🏐 <strong>Community scoring is on.</strong> Anyone can record final scores or use Undo/Redo. Double-check the court and teams before saving.</div>':e.status==='locked'&&!demo?'<div class="courts-community-notice" role="alert">⚠ Public scoring is not available yet. Ask an admin to install the V1.32 Supabase SQL update.</div>':''}
       <div class="courts-layout courts-matches-layout">${groups.map(g=>g.schedule).join('')}</div>
@@ -1670,6 +1702,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'save-rotation-transfers':saveRotationTransferPlan();break;
     case 'random-rotation-transfers':{if(adminGranted&&isRotationWaveComplete()){rotationManualPlan=[];rotationManualKey=rotationSelectionKey();closeRotationTransferDialog();render();flash('Random transfers selected for the next games.');}break;}
     case 'rotate-five-teams':await rotateFiveTeams();break;
+    case 'enable-rotation-roles':if(adminGranted&&fiveRotation())await act(()=>api.enableFiveRotationPositions(pub.event.id),'Assigned roles are now visible on Live Courts and the kiosk.');break;
     case 'next-round':await startNextTeams(false);break;
     case 'reset':if(confirm('Erase team assignments and reopen check-in? No results can be recorded.'))await act(()=>api.resetRound(pub.event.id),'Teams reset. You can rebalance and publish again.');break;
     case 'finish-session-confirm':{
