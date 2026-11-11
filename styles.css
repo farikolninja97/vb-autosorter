@@ -1379,3 +1379,15 @@ html[data-brand="cos"][data-theme="dark"] .court-roster .team-members li.sub-mem
   background:#42351a!important;
   color:#ffe8a2;
 }
+
+/* V1.51: fast attendance browse without disrupting typed name search. */
+.attendance-search-wrap > .field{padding-right:139px}
+.attendance-browse-toggle{position:absolute;right:7px;top:6px;min-height:33px;z-index:1;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;padding:5px 10px;border-radius:8px;border:1px solid #bccfe5;background:#edf4fc;color:#163c6b;font-size:12px;font-weight:800;line-height:1.2}
+.attendance-browse-toggle:hover,.attendance-browse-toggle[aria-pressed="true"]{background:#d8eafd;border-color:#7da8d6}
+.attendance-browse-toggle:focus-visible{outline:2px solid #1859a4;outline-offset:2px}
+.attendance-results{max-height:min(55vh,440px);-webkit-overflow-scrolling:touch;scrollbar-gutter:stable;overscroll-behavior:contain}
+.attendance-browse-heading{position:sticky;top:0;z-index:1;padding:10px 13px;background:#e9f2fc;color:#23476d;border-bottom:1px solid #d5e3f2;font-size:12px;font-weight:800}
+[data-theme="dark"] .attendance-browse-toggle{background:#273d59;border-color:#567493;color:#e5f3ff}
+[data-theme="dark"] .attendance-browse-toggle:hover,[data-theme="dark"] .attendance-browse-toggle[aria-pressed="true"]{background:#355678;border-color:#8ab0d0}
+[data-theme="dark"] .attendance-browse-heading{background:#223c58;color:#d7eaff;border-bottom-color:#41617e}
+@media(max-width:540px){.attendance-results{max-height:min(49dvh,350px)}.attendance-search-wrap > .field{padding-right:126px}.attendance-browse-toggle{right:6px;padding:5px 7px;font-size:11px}}

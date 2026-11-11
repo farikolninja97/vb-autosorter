@@ -109,7 +109,7 @@
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.50';
+  const APP_VERSION='1.51';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -1001,36 +1001,42 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
   }
   // Attendance search uses admin-only profile data, never a public player lookup.
   const nameKey=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase().trim();
+  // Click/focus with an empty search opens all not-yet-checked-in profiles;
+  // typing keeps the original ranked, 10-result name search including "Here" matches.
   function attendanceMatches(){
-    if(!adminGranted || !admin?.players || !attendanceSearch.trim())return [];
+    if(!adminGranted || !admin?.players || pub?.event?.status!=='open')return [];
     const key=nameKey(attendanceSearch);
     const checked=new Set((pub?.roster||[]).map(p=>p.id));
+    if(!key)return admin.players.filter(p=>!checked.has(p.id)).sort((a,b)=>a.name.localeCompare(b.name));
     return admin.players.filter(p=>nameKey(p.name).includes(key)).sort((a,b)=>
       Number(checked.has(a.id))-Number(checked.has(b.id))||
       Number(!nameKey(a.name).startsWith(key))-Number(!nameKey(b.name).startsWith(key))||
       a.name.localeCompare(b.name));
   }
   function attendanceSuggestions(){
-    if(!attendanceDropdownOpen || !pub?.event || pub.event.status!=='open' || !attendanceSearch.trim())return '';
-    const matches=attendanceMatches(),top=matches.slice(0,10);
-    if(!top.length)return '<div class="attendance-no-match">No saved players match. Create their profile in the Admin tab, then return to Check-In.</div>';
+    if(!attendanceDropdownOpen || !pub?.event || pub.event.status!=='open')return '';
+    const browseAll=!attendanceSearch.trim();
+    const matches=attendanceMatches(),top=browseAll?matches:matches.slice(0,10);
+    if(!top.length)return browseAll?'<div class="attendance-no-match">✓ All saved players are already checked in. Add a new player from Check-in if needed.</div>':'<div class="attendance-no-match">No saved players match. Create their profile in the Admin tab, then return to Check-in.</div>';
     const checked=new Set(pub.roster.map(p=>p.id));
     const full=!canCheckInMore();
-    return `${top.map((p,i)=>{
+    const summary=browseAll?`<div class="attendance-browse-heading" role="status">${matches.length} available player${matches.length===1?'':'s'} · Scroll and tap to check in</div>`:'';
+    return `${summary}${top.map((p,i)=>{
       const present=checked.has(p.id),disabled=present||full;
       return `<button id="attendance-option-${i}" class="attendance-option ${i===attendanceActive?'selected':''}" type="button" role="option" aria-selected="${i===attendanceActive}" data-action="attendance-select" data-player="${safe(p.id)}" ${disabled?'disabled':''}>
         <span class="attendance-option-main"><strong>${safe(p.name)}</strong><small>${safe(p.position||'Unspecified')}</small></span>
         <span class="attendance-option-action ${present?'already-here':''}">${present?'✓ Here':full?'Full · check Match Options':'＋ Check in'}</span>
       </button>`;
-    }).join('')}${matches.length>top.length?`<div class="attendance-results-note">Showing 10 of ${matches.length} matches. Keep typing to narrow the list.</div>`:''}`;
+    }).join('')}${!browseAll&&matches.length>top.length?`<div class="attendance-results-note">Showing 10 of ${matches.length} matches. Keep typing to narrow the list.</div>`:''}`;
   }
   function updateAttendanceSuggestions(){
-    const input=$('#attendance-search'),result=$('#attendance-results');
+    const input=$('#attendance-search'),result=$('#attendance-results'),browse=$('#attendance-browse-all');
     if(!input || !result)return;
-    const visible=attendanceDropdownOpen&&Boolean(attendanceSearch.trim())&&pub?.event?.status==='open';
+    const visible=attendanceDropdownOpen&&pub?.event?.status==='open'&&adminGranted;
     result.hidden=!visible;
     result.innerHTML=visible?attendanceSuggestions():'';
     input.setAttribute('aria-expanded',String(visible));
+    if(browse){browse.setAttribute('aria-expanded',String(visible&&!attendanceSearch.trim()));browse.setAttribute('aria-pressed',String(visible&&!attendanceSearch.trim()));}
     const option=$(`#attendance-option-${attendanceActive}`);
     if(option && !option.disabled)input.setAttribute('aria-activedescendant',option.id);
     else input.removeAttribute('aria-activedescendant');
@@ -1062,7 +1068,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       <div class="attendance-stats"><div><strong>${checked.length}</strong><span>Here today</span></div><div><strong>${Math.max(0,all.length-checked.length)}</strong><span>Not checked in</span></div><div><strong>${Math.max(0,e.capacity-checked.length)}</strong><span>Open team spots</span></div></div>
       ${renderCheckedInPositionCounts()}
       ${e.overflow_enabled?`<p class="hint overflow-checkin-note">⏳ Overflow mode is ON. ${Math.max(0,checked.length-e.capacity)} of ${checked.length} players will wait this round if teams are made now. Players are randomly redrawn for every new preview; all stay checked in.</p>`:''}
-      ${editable?`<div class="attendance-find"><label class="label-input" for="attendance-search">Find a player to check in</label><div class="attendance-search-wrap"><span class="attendance-search-icon" aria-hidden="true">⌕</span><input id="attendance-search" type="search" class="field" placeholder="Type any part of a name…" value="${safe(attendanceSearch)}" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen&&attendanceSearch.trim())}" role="combobox" aria-label="Find registered player" /><div class="attendance-results" id="attendance-results" role="listbox" aria-label="Matching player profiles" ${attendanceDropdownOpen&&attendanceSearch.trim()?'':'hidden'}>${attendanceSuggestions()}</div></div><p class="attendance-search-hint">Matches appear as you type. Tap <strong>＋ Check in</strong> or use ↓ and Enter.</p></div>`:'<div class="hint">Teams are currently playing. Attendance changes reopen after this round ends.</div>'}
+      ${editable?`<div class="attendance-find"><label class="label-input" for="attendance-search">Find a player to check in</label><div class="attendance-search-wrap"><span class="attendance-search-icon" aria-hidden="true">⌕</span><input id="attendance-search" type="search" class="field" placeholder="Search players…" value="${safe(attendanceSearch)}" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen)}" aria-describedby="attendance-search-hint" role="combobox" aria-label="Find registered player" /><button id="attendance-browse-all" class="attendance-browse-toggle" type="button" data-action="attendance-browse-all" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen&&!attendanceSearch.trim())}" aria-pressed="${Boolean(attendanceDropdownOpen&&!attendanceSearch.trim())}">☷ All available</button><div class="attendance-results" id="attendance-results" role="listbox" aria-label="Available and matching player profiles" ${attendanceDropdownOpen?'':'hidden'}>${attendanceSuggestions()}</div></div><p class="attendance-search-hint" id="attendance-search-hint">Tap the field or <strong>All available</strong> to browse every unchecked player, or type to search. Tap <strong>＋ Check in</strong> or use ↓ and Enter.</p></div>`:'<div class="hint">Teams are currently playing. Attendance changes reopen after this round ends.</div>'}
       <div class="attendance-list-head"><div><h4>Checked-in players</h4><span class="small-caps">${here.length} of ${all.length} profiles</span></div>${editable?'<span class="attendance-hint">Tap Remove if someone leaves</span>':''}</div>
       <div class="attendance-checked-list">${checkedList}</div>
     </section>`;
@@ -1477,12 +1483,27 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       if(success){searchText='';showAllProfiles=false;$('#admin-body').innerHTML=renderAdmin();}
       break;
     }
+    case 'attendance-browse-all':{
+      if(!adminGranted||pub?.event?.status!=='open')break;
+      // Browse button doesn't open the on-screen keyboard on a tablet.
+      if(attendanceDropdownOpen&&!attendanceSearch.trim()){attendanceDropdownOpen=false;}
+      else{attendanceSearch='';attendanceDropdownOpen=true;attendanceActive=0;const input=$('#attendance-search');if(input)input.value='';}
+      updateAttendanceSuggestions();
+      break;
+    }
     case 'attendance-select':{
       if(btn.disabled||!adminGranted||pub?.event?.status!=='open')break;
       const player=admin.players.find(p=>p.id===btn.dataset.player);if(!player)break;
       if(pub.roster.some(p=>p.id===player.id))break;
+      const wasBrowsing=!attendanceSearch.trim();
+      const oldScroll=wasBrowsing?($('#attendance-results')?.scrollTop||0):0;
       const success=await act(()=>api.checkIn(player.id),`${player.name} checked in.`);
-      if(success){attendanceSearch='';attendanceDropdownOpen=false;attendanceActive=0;const input=$('#attendance-search');if(input){input.value='';input.focus();updateAttendanceSuggestions();}}
+      if(success){
+        attendanceSearch='';attendanceDropdownOpen=true;attendanceActive=0;
+        const input=$('#attendance-search');if(input){input.value='';if(document.activeElement===input)input.focus();}
+        updateAttendanceSuggestions();
+        if(wasBrowsing){const results=$('#attendance-results');if(results)results.scrollTop=oldScroll;}
+      }
       break;
     }
     case 'attendance-remove':{
@@ -1509,16 +1530,21 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'logout':if(db)await db.auth.signOut();user=null;admin=null;adminGranted=false;showMmr=false;if(demo)await setDemoMode(false);await refresh(true);flash('Signed out.');break;
   }});
   document.addEventListener('change',async ev=>{if(ev.target?.closest('#create-form'))updateCreateSessionSummary();if(ev.target?.id==='team-naming-mode'){if(!adminGranted||!pub?.event)return;const mode=ev.target.value;ev.target.disabled=true;await act(()=>api.setTeamNamingMode(pub.event.id,mode),mode==='funny'?'Funny volleyball team names enabled for everyone.':'Numbered teams enabled: Blue 1–3, Red 4–6.');return;}if(ev.target?.id==='score-target-select'){if(!adminGranted||pub?.event?.status!=='open')return;const target=Number(ev.target.value);ev.target.disabled=true;await act(()=>api.setTargetScore(pub.event.id,target),`Target set to ${target}, win by 2.`);return;}if(ev.target?.id==='show-player-positions-toggle'){if(!adminGranted||!pub?.event||admin?.position_balance!==true)return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setShowPlayerPositions(pub.event.id,enabled),enabled?'Positions now shown on Live Courts and kiosk.':'Positions hidden on Live Courts and kiosk.');return;}if(['ignore-mmr-toggle','checkin-ignore-mmr-toggle'].includes(ev.target?.id)){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setIgnoreMmr(pub.event.id,enabled),enabled?'MMR ignored for team creation; results still affect ratings.':'MMR tie-breaker restored; roles, gender and teammates still take priority.');return;}if(ev.target?.id==='gender-balance-toggle'){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setGenderBalance(pub.event.id,enabled),enabled?'Women balancing enabled for the next round.':'Women balancing disabled.');return;}if(ev.target?.id==='position-balance-toggle'){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setPositionBalance(pub.event.id,enabled),enabled?'Position-aware sorting enabled.':'Position-aware sorting disabled.');return;}if(ev.target?.id==='add-tier'){const custom=ev.target.value==='custom',area=$('#new-player-custom-mmr'),input=$('#add-custom-mmr');if(area&&input){area.hidden=!custom;input.disabled=!custom;input.required=custom;}}if(ev.target?.classList?.contains('tier-preset')&&ev.target.value){ev.target.closest('.profile-controls').querySelector('.profile-mmr').value=ev.target.value;}if(ev.target?.id==='leaderboard-filter'&&adminGranted){leaderboardPosition=ev.target.value;$('#leaderboard-body').innerHTML=renderLeaderboard();}});
-  document.addEventListener('input',ev=>{if(ev.target?.id==='who-search'){publicAttendanceSearch=ev.target.value;const ul=$('#who-players');if(ul)ul.innerHTML=renderPublicAttendanceItems();}if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=Boolean(attendanceSearch.trim());attendanceActive=0;updateAttendanceSuggestions();}if(ev.target?.closest('.live-score-form')){const form=ev.target.closest('.live-score-form');scoreDrafts.set(form.dataset.match,{a:form.querySelector('[name=score-a]')?.value??'',b:form.querySelector('[name=score-b]')?.value??''});updateScorePreview(form);}if(ev.target?.id==='player-search'){searchText=ev.target.value;const pos=ev.target.selectionStart;$('#admin-body').innerHTML=renderAdmin();const restored=$('#player-search');restored?.focus();if(pos!==null)restored?.setSelectionRange(pos,pos);}});
+  document.addEventListener('input',ev=>{if(ev.target?.id==='who-search'){publicAttendanceSearch=ev.target.value;const ul=$('#who-players');if(ul)ul.innerHTML=renderPublicAttendanceItems();}if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=true;attendanceActive=0;updateAttendanceSuggestions();const results=$('#attendance-results');if(results)results.scrollTop=0;}if(ev.target?.closest('.live-score-form')){const form=ev.target.closest('.live-score-form');scoreDrafts.set(form.dataset.match,{a:form.querySelector('[name=score-a]')?.value??'',b:form.querySelector('[name=score-b]')?.value??''});updateScorePreview(form);}if(ev.target?.id==='player-search'){searchText=ev.target.value;const pos=ev.target.selectionStart;$('#admin-body').innerHTML=renderAdmin();const restored=$('#player-search');restored?.focus();if(pos!==null)restored?.setSelectionRange(pos,pos);}});
   document.addEventListener('keydown',ev=>{
     if(ev.target?.id!=='attendance-search')return;
     if(ev.key==='Escape'){attendanceDropdownOpen=false;updateAttendanceSuggestions();return;}
-    if(!attendanceSearch.trim() || !pub?.event || pub.event.status!=='open')return;
-    const choices=attendanceMatches().slice(0,10);
+    if(!pub?.event || pub.event.status!=='open')return;
+    const choices=attendanceSearch.trim()?attendanceMatches().slice(0,10):attendanceMatches();
     if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){
       ev.preventDefault();attendanceDropdownOpen=true;
       if(choices.length){attendanceActive=(attendanceActive+(ev.key==='ArrowDown'?1:-1)+choices.length)%choices.length;}
-      updateAttendanceSuggestions();return;
+      updateAttendanceSuggestions();
+      const option=$(`#attendance-option-${attendanceActive}`),list=$('#attendance-results');
+      if(option&&list){const top=option.offsetTop-list.offsetTop,bottom=top+option.offsetHeight;
+        if(top<list.scrollTop)list.scrollTop=top;
+        else if(bottom>list.scrollTop+list.clientHeight)list.scrollTop=bottom-list.clientHeight;}
+      return;
     }
     if(ev.key==='Enter'){
       ev.preventDefault();const selected=choices[attendanceActive]||choices[0];
@@ -1532,7 +1558,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     if(!ev.target.closest('.attendance-search-wrap')&&attendanceDropdownOpen){attendanceDropdownOpen=false;updateAttendanceSuggestions();}
   });
   document.addEventListener('focusin',ev=>{
-    if(ev.target?.id==='attendance-search'&&attendanceSearch.trim()){attendanceDropdownOpen=true;updateAttendanceSuggestions();}
+    if(ev.target?.id==='attendance-search'&&adminGranted&&pub?.event?.status==='open'){attendanceDropdownOpen=true;attendanceActive=0;updateAttendanceSuggestions();}
   });
   $('#demo-reset').addEventListener('click',()=>{if(!demo||!adminGranted)return;if(!confirm('Reset the demo, sample players, and all round results?'))return;demoData=seedDemo();demoData.signups=demoData.players.slice(0,36).map((p,i)=>({player_id:p.id,checked_at:new Date(Date.now()+i*1000).toISOString()}));storeDemo();searchText='';refresh();flash('Practice session reset with 36 sample players checked in.');});
   window.addEventListener('hashchange',()=>{const wanted=window.location.hash.slice(1);if(wanted!==tab)switchTab(wanted,true);});

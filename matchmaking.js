@@ -1,4 +1,4 @@
-/* RallyRank V1.41 — Outside-to-Middle fallback and session-level preference fairness. */
+/* RallyRank V1.51 — Session-wide rotation of unavoidable autofill assignments. */
 (function(root){
   'use strict';
   const DEFAULT_COURT_COUNTS=[3,3];
@@ -82,6 +82,32 @@
   };
   const historyOf=(history,id)=>Array.isArray(history?.[id])?history[id]:[];
   const needsPrimary=(p,history)=>!isPlaceholder(p)&&Boolean(recognizedPrimary(p))&&!historyOf(history,p.id).includes(recognizedPrimary(p));
+  // V1.51: Rotate unavoidable out-of-preference fills across completed rounds.
+  // A primary/secondary Flex counts as a valid preferred role, matching the
+  // green/yellow role dots in team-display.js. Never count placeholders or an
+  // unassigned role as somebody having filled.
+  function isPreferredRole(player,role){
+    if(isPlaceholder(player)||!Object.hasOwn(SIX_ROLES,role))return false;
+    const primary=player.position||player.primary_position||'Unspecified';
+    const secondary=player.secondary_position||'Unspecified';
+    if(role==='Middle Blocker'&&!canPlayMiddle(player))return false;
+    return primary===role||secondary===role||primary==='Flex'||secondary==='Flex';
+  }
+  function autofillCount(player,history){
+    if(isPlaceholder(player))return 0;
+    return historyOf(history,player.id).reduce((total,role)=>
+      total+(Object.hasOwn(SIX_ROLES,role)&&!isPreferredRole(player,role)?1:0),0);
+  }
+  function teamAutofillCost(team,history){
+    // Avoid unnecessary fills first. Among unavoidable fills, a first turn is
+    // much less expensive than a repeat. The matching step also applies this
+    // priority *within* each team; this step chooses among team drafts.
+    return assignTeamPositions(team,history).reduce((cost,p)=>{
+      if(isPlaceholder(p)||!p.assigned_position||isPreferredRole(p,p.assigned_position))return cost;
+      const prior=autofillCount(p,history);
+      return cost+26000+prior*190000+Math.max(0,prior-1)**2*190000;
+    },0);
+  }
   function rolePriorityCost(teams,history){
     // Spread unserved primary-position players across the available role slots.
     // This is an inexpensive approximation in the tight team-swap loop; final
@@ -263,7 +289,13 @@
         if(next<current){current=next;}
         else [teams[a][ia],teams[b][ib]]=[teams[b][ib],teams[a][ia]];
       }
-      if(current<bestScore){bestScore=current;best=teams.map(t=>[...t]);}
+      // Assess fairness across *all* teams, not only within one team's six
+      // roles. A later draft can swap who covers a shortage, distributing
+      // the burden before the same player covers twice in the daily session.
+      const fairnessCost=balancePositions
+        ?teams.reduce((sum,team)=>sum+teamAutofillCost(team,roleHistory),0):0;
+      const objective=current+fairnessCost;
+      if(objective<bestScore){bestScore=objective;best=teams.map(t=>[...t]);}
     }
     // Do not assign or display positions when the admin disables the
     // position-balancing option, including in 6v6 games.
@@ -318,6 +350,10 @@
       // there is no specific primary goal to satisfy.
       if(!recognizedPrimary(player)&&role===secondary&&role!=='Flex'&&role!=='Unspecified'&&
          !historyOf(roleHistory,player.id).includes(role))value+=65;
+      // When somebody *must* fill outside their preferred roles, ask the
+      // player with fewer past fills first. Never treat Flex as an autofill.
+      // This does not override the hard Middle eligibility restriction above.
+      if(!isPreferredRole(player,role))value-=80+Math.min(6,autofillCount(player,roleHistory))*450;
       return value;
     }
     // 6! <= 720 arrangements; choose the best fit without changing teams.
@@ -354,7 +390,7 @@
       ...(!hasPrimary('Middle Blocker')?['Middle Blocker']:[])
     ];
   }
-  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,teamRoleWarnings,canPlayMiddle,needsPrimary,rolePriorityCost,K_FACTOR};
+  const api={makeTeams,swing,marginBonus,matchSwing,validateFinalScore,spread,teamAverage,isPlaceholder,positionCoverage,positionBalanceCost,assignTeamPositions,teamRoleWarnings,canPlayMiddle,needsPrimary,rolePriorityCost,isPreferredRole,autofillCount,K_FACTOR};
   root.RallyMath=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

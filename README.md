@@ -1,45 +1,45 @@
-# RallyRank V1.50 — Update Only
+# RallyRank V1.51 — Update Only
 
-**Install over V1.49.** This is a presentation-only update. Matchmaking, score entry, Supabase tables/functions, and configured `config.js` are unchanged.
+Install **over V1.50**. This release combines the Check-in player-browser improvement with session-wide fairness for people who need to play outside their preferred positions. Both improvements require a fresh JavaScript deployment; the database schema stays unchanged.
 
-## Changes
+## Changed features
 
-1. **Missing substitutes are obvious:** `Sub needed` rows have a **solid yellow outline** in the private Team Preview, published Live Courts, and the community kiosk. This remains visible when the position-detail toggle is OFF. If assigned positions are enabled and a substitute has a known role, the row continues to show `Needed: <role>`.
-2. **Flex correctly counts as a preferred fit (admin-only dots):**
-   - **Green dot:** exact primary role **or primary Flex**, meaning any eligible assigned role is an acceptable primary match.
-   - **Yellow dot:** exact secondary role **or secondary Flex**, as long as the assigned role did not already qualify as primary.
-   - **Red dot:** an assigned role not covered by the player's primary or secondary preferences.
-   - Substitute rows get the **yellow outline**, not a role-fit dot.
-   - A woman choosing Flex **still cannot be assigned Middle Blocker unless Middle is explicitly her primary or secondary preference**. That existing safeguard remains in the matcher; the display helper also will not mislabel an unauthorized Middle assignment as a green/yellow Flex match.
-3. **Primary-role opportunity percentage accounts for primary Flex:** a completed, valid assignment satisfies a primary-Flex player's preference for that session. Secondary Flex does **not** count as receiving a more specific primary position.
-4. Both page footers display **V1.50**. Updated `?v=1.50` cache tokens for the edited frontend files and the shared role-display helper.
+### 1. Check-in: browse all available players
 
-## Install
+- Tap or focus an **empty** Check-in search field to see **every currently unchecked player** in an alphabetized, scrollable dropdown.
+- An **All available** control opens or closes the list without making you type. Useful on tablets with an on-screen keyboard.
+- Tap a player to check them in. The browser remains open so you can keep checking others in; it preserves your scroll position.
+- As soon as you type a name, RallyRank uses the existing ranked search capped at ten results. Clear the text to browse everyone again.
+- Already checked-in players are omitted only from empty-query browsing, not from typed search, where they can still appear as already checked in.
+- Admin permissions, capacity limits, overflow mode and existing attendance data are unchanged.
 
-1. Back up your current website files.
-2. Copy these **six changed files** from the ZIP's `github-pages/` directory to the root of your `vb-autosorter` GitHub Pages repository:
+### 2. Rotate unavoidable autofill assignments
+
+- When **Balance teams by volleyball position** is enabled, the team generator reads the **existing per-player position history from completed/archived rounds of this daily session**.
+- An **autofill** means a player received an assigned role that is neither their primary nor secondary preference. Primary **Flex** and secondary **Flex** count as valid preferred matches, not autofills, consistent with green/yellow role dots.
+- If somebody must cover an unfamiliar position, the sorter **strongly favors players with fewer previous autofills** over somebody who has already covered one or more. It also compares candidate team layouts to spread the fill burden across teams.
+- It does **not** give someone an unnecessary out-of-position role just to even up totals, and it preserves the rule that a woman can play Middle Blocker **only if Middle is listed as her primary or secondary role**.
+- The fairness rule is best effort, not mathematically absolute: a repeat can be necessary when there are too few eligible players, the role combination is infeasible, or a player is not in this round (e.g. overflow). Position balancing OFF still means no role assignment or role-fairness calculation.
+- History tracking requires the earlier **V1.41** feature to already be installed; no new SQL in V1.51. Unrecorded and unassigned roles do not count as autofills.
+
+## Installation
+
+1. Back up your current GitHub Pages files.
+2. Copy the **five changed files** from `github-pages/` to your `vb-autosorter` repository root, replacing only those filenames:
    - `app.js`
+   - `matchmaking.js`
    - `styles.css`
-   - `team-display.js`
-   - `kiosk.css`
    - `index.html`
    - `kiosk.html`
-3. **Do not replace your configured `config.js`.** All other files remain untouched, including `matchmaking.js`, `team-names.js`, and `kiosk.js`.
-4. Refresh the website and reopen/refresh the kiosk. Check **V1.50** in both footers. On an old kiosk installation, a hard refresh may be needed to fetch the cache-busted stylesheet.
+3. **Do not overwrite `config.js`** or replace the unchanged `team-display.js`, `team-names.js`, `kiosk.js`, `kiosk.css`, or theme assets.
+4. Refresh the main website and kiosk; verify both show **V1.51**. The HTML also includes a fresh cache token for `matchmaking.js` so clients retrieve the new fairness logic.
 
-**Supabase changes: NONE. Do not run any SQL for V1.50.** An empty `supabase/` directory is included for release consistency.
+**Supabase migration: NOT REQUIRED.** The `supabase/` folder is intentionally empty. V1.41's existing admin-only role-history RPC is reused.
 
-## Quick practice checks
+## Verified locally
 
-- With position balancing ON, generate a preview containing placeholders. Verify every `Sub needed` row has a yellow outlined box. The assigned role, when available, still appears.
-- Publish in a practice session and check the yellow substitute outline on Live Courts and the kiosk, both on mobile and larger displays.
-- For a player with **primary Flex**, every valid assigned role is marked green. For **secondary Flex** with a different primary role, a non-primary assigned role is yellow. Other autofill assignments remain red.
-- Turn the position visibility toggle OFF: assigned-role details disappear on published Live Courts/kiosk, but yellow placeholder outlines remain.
-- Confirm scoring, player check-ins and round operations remain unchanged.
-
-## Validation
-
-- `node --check` passed for `app.js` and `team-display.js`.
-- 26 helper, percentage, version, release-content, and CSS checks passed in Node.js.
-- Chromium visual checks passed for yellow placeholders and green/yellow/red dots on RallyRank and COS themes, light/dark modes, and mobile/desktop kiosk widths.
-- Live Supabase behavior was not tested; this update does not change the database.
+- JavaScript syntax checks passed.
+- Node regression tests cover previous autofill counts, Flex preferences, the women/Middle eligibility safeguard, team assignments, 2+3 courts, and search logic.
+- Three simulated 36-player rounds completed with role history carried across rounds and no repeat autofills in that sample.
+- Chromium browser test passed on a 390px phone viewport and desktop: open all unchecked players, scroll, check someone in, retain the list/scroll position, typed 10-result search, accent-insensitive search, Escape, and mobile overflow.
+- The SQL migration and live Supabase multi-device flow were **not** executed against your production project.
