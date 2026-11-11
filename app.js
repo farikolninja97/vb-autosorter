@@ -113,11 +113,13 @@
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.53';
+  const APP_VERSION='1.54';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
   let pendingTeams=null, pendingOverflow=[], pendingTeamsKey=null, draftSelection=null, draftStale=false;
+  // Uncommitted manual transfers for the NEXT five-team rotation only.
+  let rotationManualPlan=[], rotationManualKey=null;
   // Hidden, admin-only convenience feature. Five taps on the Team Preview title
   // within four seconds toggles the local, pre-publish roster swap editor.
   // This is a UI easter egg, NOT an authorization boundary: RPCs still check admins.
@@ -632,7 +634,7 @@
       const {error}=await db.rpc('vmm_redo_court_result',{p_event_id:eventId,p_court_number:court,p_expected_match_id:expectedMatchId});
       if(error)throw error;
     },
-    async advanceFiveRotation(eventId,expectedWave){
+    async advanceFiveRotation(eventId,expectedWave,manualTransfers=[]){
       if(demo)return demoAction(()=>{
         const e=demoData.event,r=demoData.five_rotation;
         if(e?.id!==eventId||e.status!=='locked'||!r||Number(r.wave)!==expectedWave)throw Error('This rotation changed. Refresh.');
@@ -640,12 +642,12 @@
         if(current.length!==2||current.some(m=>!m.winner_team_id))throw Error('Score both courts before rotating.');
         const next=window.RallyFiveRotation.advance(r,current.find(m=>m.court===1),current.find(m=>m.court===2));
         demoData.five_rotation=next;
-        demoData.teams=window.RallyFiveRotation.fillFromRestingTeam(demoData.teams,next,demoData.players).teams;
+        demoData.teams=window.RallyFiveRotation.fillFromRestingTeam(demoData.teams,next,demoData.players,manualTransfers).teams;
         demoData.redo_scores=[];
         demoData.matches.push({id:id(),court:1,order:next.wave,team_a_id:next.blue_ids[0],team_b_id:next.blue_ids[1],winner_team_id:null,score_a:null,score_b:null,completed_seq:null},
           {id:id(),court:2,order:next.wave,team_a_id:next.red_ids[0],team_b_id:next.red_ids[1],winner_team_id:null,score_a:null,score_b:null,completed_seq:null});
       });
-      const {error}=await db.rpc('vmm_advance_five_rotation',{p_event_id:eventId,p_expected_wave:expectedWave});if(error)throw error;
+      const {error}=await db.rpc('vmm_advance_five_rotation_v154',{p_event_id:eventId,p_expected_wave:expectedWave,p_manual_transfers:manualTransfers});if(error)throw error;
     },
     async finishFiveRotation(eventId,expectedWave,expectedCompleted){
       if(demo)return demoAction(()=>{
@@ -875,7 +877,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const launch=e.status==='open'?`<section class="panel checkin-launch matchday-action-card" aria-label="Create match teams"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">${draft?'STEP 3 · PRIVATE TEAM PREVIEW':'STEP 2 · CHECK IN PLAYERS'}</span><strong>${draft?'🏐 Your team preview is ready':`✓ ${safe(e.title)} · ${count} checked in`}</strong><small>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · ${count}/${e.capacity} player spots · Round ${Number(e.round_number)||1}</small></div><span class="pill ${ready?'win':'wait'}">${ready?draft?'Ready to publish':'Ready to make teams':`${Math.max(0,needed-count)} more needed`}</span></div>
       <div class="matchday-primary-actions">${draft?`<button class="btn btn-primary" type="button" data-action="checkin-review-teams">✓ Review &amp; publish teams →</button><button class="btn btn-secondary" type="button" data-action="checkin-preview-teams">↻ Reshuffle preview</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-preview-teams" ${ready?'':'disabled'}>⚡ Make teams for Round ${Number(e.round_number)||1}</button>`}<button class="btn btn-secondary" type="button" data-action="open-session-settings">⚙ Match options</button><button class="btn btn-secondary" type="button" data-action="checkin-new-player">＋ New player</button></div>
       <p class="matchday-help">${draft?'Preview is admin-only. Review positions and teammates before publishing; publishing is the final confirmation.':ready?`Uses the options shown below and generates a private preview. ${count<e.capacity?`${e.capacity-count} substitute spots will be filled.`:count>e.capacity?`${count-e.capacity} randomly chosen players will be in overflow for this round.`:''}`:`Check in at least ${needed} players. Positions here update automatically as players arrive.`}</p></section>`
-      :fiveRotation()?`<section class="panel checkin-launch matchday-action-card ${isRotationWaveComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">FIVE-TEAM ROTATION · SET ${Number(pub.five_rotation.wave)}</span><strong>${isRotationWaveComplete()?'✅ Both courts scored — rotate teams':'🏐 Two matches in progress'}</strong><small>${done} of 2 court scores · ${pub.matches.filter(m=>m.winner_team_id).length} total scored · Check-ins stay</small></div></div><div class="matchday-primary-actions">${isRotationWaveComplete()?`<button class="btn btn-primary" type="button" data-action="rotate-five-teams">↻ Rotate to next games</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-courts">🔵🔴 Enter scores</button>`}<button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">⏹ End rotation &amp; remake teams</button></div><p class="matchday-help">One team sits each set. Roster assignments and recorded MMR stay unchanged until you choose to remake teams.</p></section>`
+      :fiveRotation()?`<section class="panel checkin-launch matchday-action-card ${isRotationWaveComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">FIVE-TEAM ROTATION · SET ${Number(pub.five_rotation.wave)}</span><strong>${isRotationWaveComplete()?'✅ Both courts scored — rotate teams':'🏐 Two matches in progress'}</strong><small>${done} of 2 court scores · ${pub.matches.filter(m=>m.winner_team_id).length} total scored · Check-ins stay</small></div></div><div class="matchday-primary-actions"><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">⏹ End rotation &amp; remake teams</button><button type="button" class="btn btn-secondary" data-action="manual-rotation-transfers" ${isRotationWaveComplete()?'':'disabled'}>👥 Manual transfers${rotationManualKey===rotationSelectionKey()&&rotationManualPlan.length?` (${rotationManualPlan.length})`:''}</button>${isRotationWaveComplete()?`<button class="btn btn-primary" type="button" data-action="rotate-five-teams">↻ Rotate to next games</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-courts">🔵🔴 Enter scores</button>`}</div><p class="matchday-help">When teams rotate, random player transfers fill open spots unless you select manual transfers before rotating. Recorded MMR stays saved.</p></section>`
       :`<section class="panel checkin-launch matchday-action-card ${isRoundComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">STEP 4 · ${isRoundComplete()?'ROUND COMPLETE':'GAMES UNDERWAY'}</span><strong>${isRoundComplete()?'✅ All scores recorded — ready for new teams':'🏐 Teams are playing'}</strong><small>${done} of ${target} matches recorded · Round ${Number(e.round_number)||1} · Check-ins carry over</small></div><span class="pill ${isRoundComplete()?'win':'muted'}">${done}/${target} scored</span></div><div class="matchday-score-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${done}" aria-label="Recorded match results"><span style="width:${target?Math.round(100*done/target):0}%"></span></div><div class="matchday-primary-actions">${isRoundComplete()?`<button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options for next round</button>`:`<button type="button" class="btn btn-primary" data-action="checkin-courts">🔵🔴 View matches &amp; enter scores</button><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">↻ End round early &amp; remake teams</button>`}</div><p class="matchday-help">${isRoundComplete()?'Next Teams archives the completed round, keeps every check-in, and prepares a fresh private preview with the same options. You will review before publishing.':'Normally, finish all matches before making new teams. If play must stop, use End round early; any recorded scores and MMR are preserved.'}</p></section>`;
     return heading+steps+stats+launch+renderAttendance()+`<div class="checkin-settings-shortcut"><div><strong>⚙ Session rules</strong><span>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · Play to ${Number(e.target_score)||25}</span></div><button type="button" class="btn btn-secondary" data-action="open-session-settings">Change settings</button></div>`;
   }
@@ -1047,7 +1049,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const earlyRemakeBanner=adminGranted&&e?.status==='locked'&&!fiveRotation()&&!isRoundComplete()?`<section class="early-round-banner" aria-label="Early round controls"><div><strong>Need different teams now?</strong><small>End this round without inventing scores. Any saved scores and MMR stay recorded; everyone stays checked in.</small></div><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">↻ End round early &amp; remake teams</button></section>`:'';
     const roundNextBanner=adminGranted&&isRoundComplete()?`<section class="round-next-banner" aria-label="Next round actions"><div><strong>✅ Round ${Number(e.round_number)||1} complete</strong><small>All ${totalMatchesFor(e)} scores saved. Everyone stays checked in for the next teams.</small></div><div><button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options</button></div></section>`:'';
 
-    const rotationBanner=fiveRotation()?`<section class="five-rotation-status" aria-label="Five-team rotation status"><div><strong>🔄 Five-team rotation · Set ${Number(pub.five_rotation.wave)}</strong><small>Two games per set · Resting players transfer to teams with open slots; the resting team inherits their missing positions</small></div><div class="five-rotation-actions">${adminGranted&&isRotationWaveComplete()?`<button type="button" class="btn btn-primary" data-action="rotate-five-teams">↻ Rotate to next games</button>`:isRotationWaveComplete()?'<span class="pill win">Both scores saved · Waiting for organizer</span>':'<span class="pill muted">Score both courts to advance</span>'}${adminGranted?'<button type="button" class="btn btn-secondary" data-action="end-round-early">⏹ End rotation early · Remake teams</button>':''}</div></section>`:'';
+    const rotationBanner=fiveRotation()?`<section class="five-rotation-status" aria-label="Five-team rotation status"><div><strong>🔄 Five-team rotation · Set ${Number(pub.five_rotation.wave)}</strong><small>Two games per set · Random or manual permanent transfers fill open spots; the resting team inherits vacancies</small></div><div class="five-rotation-actions">${adminGranted?`<button type="button" class="btn btn-secondary" data-action="end-round-early">⏹ End rotation early · Remake teams</button><button type="button" class="btn btn-secondary" data-action="manual-rotation-transfers" ${isRotationWaveComplete()?'':'disabled'}>👥 Manual transfers${rotationManualKey===rotationSelectionKey()&&rotationManualPlan.length?` (${rotationManualPlan.length})`:''}</button>`:''}${adminGranted&&isRotationWaveComplete()?`<button type="button" class="btn btn-primary" data-action="rotate-five-teams">↻ Rotate to next games</button>`:isRotationWaveComplete()?'<span class="pill win">Both scores saved · Waiting for organizer</span>':'<span class="pill muted">Score both courts to advance</span>'}</div></section>`:'';
     const title=`<div class="section-top"><div><h2 id="courts-title" class="section-title">Live court rotations</h2><p class="section-sub">${hasTeams?'Blue Court 1 · Red Court 2. Teams first, results and corrections below.':'Get ready for matchday: confirm attendance and publish the teams.'}</p></div><div class="live-courts-actions"><a class="btn btn-small btn-primary" href="./kiosk.html" aria-label="Open fullscreen community kiosk">▣ Tablet kiosk</a><button class="btn btn-small btn-secondary" data-action="view-attendance">👥 Who’s here</button><button class="btn btn-small btn-secondary" data-action="refresh">↻ Refresh</button></div></div>${quickNav}`;
     // Ratings belong ONLY to Live Courts, never to the Admin tab. Keep this block after scores.
     const privateTools=adminGranted?`<div class="courts-admin-section" id="court-admin-tools">${renderPrivateMatchRatings()}</div>`:'';
@@ -1330,13 +1332,63 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     switchTab('courts');
     await handleGenerate();
   }
+  function rotationSelectionKey(){
+    if(!fiveRotation()||!isRotationWaveComplete())return null;
+    const scores=rotationWaveMatches().sort((a,b)=>a.court-b.court);
+    return `${pub.event.id}|${pub.five_rotation.wave}|${scores.map(m=>m.id+':'+m.winner_team_id).join('|')}`;
+  }
+  function nextRotationTransfers(){
+    if(!isRotationWaveComplete())throw Error('Finish both court scores before choosing who transfers.');
+    const current=rotationWaveMatches();
+    const next=window.RallyFiveRotation.advance(pub.five_rotation,current.find(m=>m.court===1),current.find(m=>m.court===2));
+    return {next,...window.RallyFiveRotation.transferOptions(pub.teams,next)};
+  }
+  function closeRotationTransferDialog(){document.getElementById('rotation-transfer-dialog')?.close();}
+  function openRotationTransferDialog(){
+    if(!adminGranted||!isRotationWaveComplete()){
+      flash('Save both court scores before selecting transfers.',true);return;
+    }
+    try{
+      const {next,bench,slots,donors}=nextRotationTransfers();
+      const dlg=$('#rotation-transfer-dialog'),body=$('#rotation-transfer-body');
+      if(!dlg||!body)return;
+      const activePlan=rotationManualKey===rotationSelectionKey()?rotationManualPlan:[];
+      const existing=new Map(activePlan.map(p=>[`${p.team_id}:${p.slot_index}`,p.player_id]));
+      const donorName=teamName(bench),names=donors.map(p=>({p,profile:admin?.players?.find(a=>a.id===p.id)||p})).sort((a,b)=>String(a.p.name).localeCompare(String(b.p.name)));
+      body.innerHTML=`<div class="transfer-about"><strong>Set ${Number(next.wave)} · ${safe(donorName)} sits out</strong><p>Choose a player from the team coming OFF the court for any missing position below. Every unselected slot is filled randomly when you tap Rotate. The selected player permanently moves to the receiving team; the resting team shows a Sub needed slot.</p></div>`+
+        (slots.length?`<div class="transfer-slots">${slots.map((gap,i)=>{const chosen=existing.get(`${gap.team_id}:${gap.slot_index}`)||'';return `<label class="transfer-slot" for="transfer-slot-${i}"><span><strong>${safe(teamName(teamById(gap.team_id)))}</strong><small>${gap.assigned_position?'Needed: '+safe(assignedRoleLabel(gap.assigned_position)):'Open roster position'}</small></span><select id="transfer-slot-${i}" class="field" data-transfer-slot data-team="${safe(gap.team_id)}" data-slot="${gap.slot_index}"><option value="">🎲 Random eligible player</option>${names.map(({p,profile})=>`<option value="${safe(p.id)}" ${chosen===p.id?'selected':''}>${safe(p.name)} · ${safe(profile.position||profile.primary_position||'Unspecified')}${profile.secondary_position&&profile.secondary_position!=='Unspecified'?' / '+safe(profile.secondary_position):''}</option>`).join('')}</select></label>`;}).join('')}</div>`:'<div class="transfer-empty">✅ No open slots for the next set. All active teams already have six players.</div>')+
+        `<p class="transfer-info">${slots.length} missing ${slots.length===1?'position':'positions'} · ${donors.length} available ${donors.length===1?'player':'players'} on ${safe(donorName)}. No ratings change until a match result is saved.</p>`;
+      if(!dlg.open)dlg.showModal();
+      dlg.querySelector('#rotation-transfer-close')?.focus({preventScroll:true});
+    }catch(e){flash(errText(e),true);}
+  }
+  function saveRotationTransferPlan(){
+    if(!adminGranted||!isRotationWaveComplete()){closeRotationTransferDialog();return;}
+    try{
+      const {slots,donors}=nextRotationTransfers();
+      const list=[...document.querySelectorAll('#rotation-transfer-dialog [data-transfer-slot]')];
+      if(list.length!==slots.length)throw Error('The rotation changed. Open Manual transfers again.');
+      const plan=list.filter(sel=>sel.value).map(sel=>({team_id:sel.dataset.team,slot_index:Number(sel.dataset.slot),player_id:sel.value}));
+      if(new Set(plan.map(p=>p.player_id)).size!==plan.length)throw Error('A player can only move to one team. Pick a different person for the duplicate selection.');
+      if(plan.some(p=>!donors.some(d=>d.id===p.player_id)||!slots.some(g=>g.team_id===p.team_id&&g.slot_index===p.slot_index)))throw Error('One selected player or position is no longer available. Refresh.');
+      rotationManualPlan=plan;
+      rotationManualKey=rotationSelectionKey();
+      closeRotationTransferDialog();
+      render();
+      flash(plan.length?`${plan.length} manual ${plan.length===1?'transfer':'transfers'} queued. Tap Rotate to apply. Remaining spots are random.`:'Random transfers selected for every open position.');
+    }catch(e){flash(errText(e),true);}
+  }
   async function rotateFiveTeams(){
     if(!adminGranted||mutating||!isRotationWaveComplete()){
       flash('Both current court scores are required before rotating teams.',true);return;
     }
     const eventId=pub.event.id,wave=Number(pub.five_rotation.wave);
-    const changed=await act(()=>api.advanceFiveRotation(eventId,wave),`Set ${wave+1} ready. The five teams have rotated; check the new courts.`);
-    if(changed){scoreDrafts.clear();switchTab('courts');}
+    if(rotationManualPlan.length&&rotationManualKey!==rotationSelectionKey()){
+      rotationManualPlan=[];rotationManualKey=null;flash('Scores changed. Manual transfers cleared; choose them again before rotating.',true);return;
+    }
+    const selected=rotationManualPlan.map(p=>({...p}));
+    const changed=await act(()=>api.advanceFiveRotation(eventId,wave,selected),`Set ${wave+1} ready. ${selected.length?'Selected and random':'Random'} transfers applied; check the new courts.`);
+    if(changed){rotationManualPlan=[];rotationManualKey=null;closeRotationTransferDialog();scoreDrafts.clear();switchTab('courts');}
   }
   async function startNextTeams(customize=false){
     if(!adminGranted||mutating||!isRoundComplete()){
@@ -1613,6 +1665,10 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     }
     case 'checkin-player':{const player=admin.players.find(p=>p.id===btn.dataset.player);await act(()=>api.checkIn(btn.dataset.player),`${player?.name||'Player'} checked in.`);break;}
     case 'remove-signup':{const player=admin.players.find(p=>p.id===btn.dataset.player);if(confirm(`Remove ${player?.name||'this player'} from the current signup? Their MMR will be kept.`))await act(()=>api.removeSignup(pub.event.id,btn.dataset.player),'Player removed from this signup.');break;}
+    case 'manual-rotation-transfers':openRotationTransferDialog();break;
+    case 'close-rotation-transfers':closeRotationTransferDialog();break;
+    case 'save-rotation-transfers':saveRotationTransferPlan();break;
+    case 'random-rotation-transfers':{if(adminGranted&&isRotationWaveComplete()){rotationManualPlan=[];rotationManualKey=rotationSelectionKey();closeRotationTransferDialog();render();flash('Random transfers selected for the next games.');}break;}
     case 'rotate-five-teams':await rotateFiveTeams();break;
     case 'next-round':await startNextTeams(false);break;
     case 'reset':if(confirm('Erase team assignments and reopen check-in? No results can be recorded.'))await act(()=>api.resetRound(pub.event.id),'Teams reset. You can rebalance and publish again.');break;
