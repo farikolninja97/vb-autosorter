@@ -1,4 +1,4 @@
-/* RallyRank V1.52 — five-team two-court continuous rotation.
+/* RallyRank V1.53 — five-team two-court continuous rotation.
    A set consists of one completed score on each court. The first transfer is
    winner/loser-driven; subsequent transfers use consecutive-court tenure.
    Pure module, also exercised by Node regression tests. */
@@ -46,7 +46,68 @@
     const funny=['Block Party','Sets on the Beach','Dig Happens','Ace Ventura','Net Ninjas'];
     return mode==='funny'?funny[n-1]:`Team ${n}`;
   }
-  const api=Object.freeze({initial,advance,slot,label});
+  // Prioritize all empty slots on the opening bench before publishing. A single
+  // bench registrant is retained until the atomic server-side publish; this
+  // keeps V1.52's existing five-team publish validation intact with 24 players.
+  function prioritizeBenchSubs(groups,assignPositions){
+    if(!Array.isArray(groups)||groups.length!==5)return groups;
+    const result=groups.map(team=>team.map(p=>({...p})));
+    const bench=result[4];
+    while(bench.filter(p=>!p.is_placeholder).length>1){
+      const holes=[];
+      for(let i=0;i<4;i++)for(let j=0;j<result[i].length;j++){
+        if(result[i][j].is_placeholder)holes.push({i,j});
+      }
+      if(!holes.length)break;
+      const hole=holes[0];
+      const donorIndex=bench.findIndex(p=>!p.is_placeholder);
+      [result[hole.i][hole.j],bench[donorIndex]]=[bench[donorIndex],result[hole.i][hole.j]];
+    }
+    return typeof assignPositions==='function'?result.map(assignPositions):result;
+  }
+  function roleFit(p,role){
+    const primary=p.position||p.primary_position,secondary=p.secondary_position;
+    if(!role)return 0;
+    if(role==='Middle Blocker'&&p.gender==='Woman'&&primary!=='Middle Blocker'&&secondary!=='Middle Blocker')return -Infinity;
+    if(primary===role)return 100;
+    if(secondary===role)return 85;
+    if(primary==='Flex')return 70;
+    if(secondary==='Flex')return 50;
+    if(role==='Middle Blocker'&&primary==='Outside Hitter')return 35;
+    return 5;
+  }
+  // Roster transfers are permanent for the current five-team rotation.
+  // The former bench team receives a real placeholder for each departed member.
+  // Uses no temporary loans and never duplicates a player ID.
+  function fillFromRestingTeam(teams,rotation,profiles=[]){
+    const next=teams.map(t=>({...t,players:t.players.map(p=>({...p}))}));
+    const byId=new Map(next.map(t=>[t.id,t]));
+    const bench=byId.get(rotation.bench_team_id);
+    if(!bench)throw Error('Resting roster missing.');
+    const active=[...rotation.blue_ids,...rotation.red_ids].map(id=>byId.get(id));
+    if(active.some(t=>!t))throw Error('Active roster missing.');
+    const holes=active.flatMap(t=>t.players.map((p,index)=>({t,p,index})).filter(x=>x.p.is_placeholder));
+    holes.sort((a,b)=>({ 'Middle Blocker':0,'Setter':1}[a.p.assigned_position]??2)-({'Middle Blocker':0,'Setter':1}[b.p.assigned_position]??2));
+    const moves=[];
+    for(const hole of holes){
+      const donors=bench.players.map((p,index)=>({p,index})).filter(x=>!x.p.is_placeholder);
+      if(!donors.length)break;
+      const choices=donors.map(d=>{
+        const profile=profiles.find(p=>p.id===d.p.id)||d.p;
+        return {...d,fit:roleFit({...profile,position:profile.position||profile.primary_position},hole.p.assigned_position)};
+      }).sort((a,b)=>b.fit-a.fit);
+      const donor=choices[0];
+      const original=bench.players[donor.index];
+      const assigned=Number.isFinite(donor.fit)?(hole.p.assigned_position||null):null;
+      hole.t.players[hole.index]={...original,assigned_position:assigned};
+      bench.players[donor.index]={id:`sub:transfer:${rotation.wave}:${original.id}`,name:'Sub needed',is_placeholder:true,assigned_position:original.assigned_position||null,slot_index:donor.index+1};
+      moves.push({player_id:original.id,from:bench.id,to:hole.t.id,role:assigned});
+    }
+    const roster=next.flatMap(t=>t.players.filter(p=>!p.is_placeholder).map(p=>p.id));
+    if(new Set(roster).size!==roster.length)throw Error('Transfer duplicated a player.');
+    return {teams:next,moves};
+  }
+  const api=Object.freeze({initial,advance,slot,label,prioritizeBenchSubs,roleFit,fillFromRestingTeam});
   root.RallyFiveRotation=api;
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

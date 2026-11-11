@@ -1406,3 +1406,10 @@ html[data-theme="dark"] .five-rotation-status,html[data-theme="dark"] .five-rota
 html[data-theme="dark"] .five-rotation-status strong{color:#f0f6ff}
 html[data-theme="dark"] .five-bench-members span{background:#243850;border-color:#4a607a;color:#f0f6ff}
 @media(max-width:600px){.five-rotation-status .btn{width:100%}.five-rotation-bench{padding:14px}.five-rotation-status{padding:14px}}
+
+/* V1.53: five-team dynamic bench and quick early rotation end. */
+.five-rotation-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.five-bench-members .five-bench-needed{border:2px solid #dea61e;background:#fff7d6;color:#78520c;border-radius:8px;padding:9px 11px;font-weight:750}
+.five-bench-members .five-bench-needed small,.five-bench-members span>small{display:block;font-size:10px;margin-top:4px}
+html[data-theme="dark"] .five-bench-members .five-bench-needed{background:#45351b;color:#ffe2a4;border-color:#e6b744}
+@media(max-width:630px){.five-rotation-actions{width:100%;justify-content:stretch}.five-rotation-actions .btn{flex:1}}

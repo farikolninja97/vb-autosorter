@@ -1,6 +1,6 @@
 (() => {
   'use strict';
-  const VERSION='1.52';
+  const VERSION='1.53';
   const $=selector=>document.querySelector(selector);
   const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'America/Denver',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -111,7 +111,7 @@
     if(!allTeams().length){root.innerHTML='<section class="kiosk-empty"><strong>Waiting for teams</strong><p>Once organizers publish a round, the team rosters and court assignments will appear here automatically.</p></section>';renderSearch();return;}
     const rotating=rotation();
     const bench=rotating?teamById(rotating.bench_team_id):null;
-    const benchCard=bench?`<section class="kiosk-five-bench" id="kiosk-five-bench"><div><strong>⏳ SITTING OUT · SET ${Number(rotating.wave)}</strong><p>${escapeHtml(moneylessTeamName(bench))} joins Blue on the next transfer. Everyone stays checked in.</p></div><div class="kiosk-bench-players">${(bench.players||[]).map(p=>`<span>${escapeHtml(p.is_placeholder?'Sub needed':p.name)}</span>`).join('')}</div></section>`:'';
+    const benchCard=bench?`<section class="kiosk-five-bench" id="kiosk-five-bench"><div><strong>⏳ SITTING OUT · SET ${Number(rotating.wave)}</strong><p>${escapeHtml(moneylessTeamName(bench))} joins Blue on the next transfer. The resting team receives empty slots when players transfer.</p></div><div class="kiosk-bench-players">${(bench.players||[]).map(p=>p.is_placeholder?`<span class="kiosk-bench-needed">✳ Sub needed${e.position_balance===true&&e.show_player_positions===true&&p.assigned_position?`<small>Needed: ${escapeHtml(assignedRoleLabel(p.assigned_position))}</small>`:''}</span>`:`<span>${escapeHtml(p.name)}${e.position_balance===true&&e.show_player_positions===true&&p.assigned_position?`<small>${escapeHtml(assignedRoleLabel(p.assigned_position))}</small>`:''}</span>`).join('')}</div></section>`:'';
     const notice=rotating?`<div class="kiosk-five-status">🔄 Five-team rotation · Set ${Number(rotating.wave)} · Two courts · One team rests · ${allMatches().filter(m=>Number(m.order)===Number(rotating.wave)&&m.winner_team_id).length} of 2 current scores${allMatches().filter(m=>Number(m.order)===Number(rotating.wave)&&m.winner_team_id).length===2?' · Waiting for organizer to rotate':''}</div>`:'';
     root.innerHTML=`${notice}<div class="kiosk-courts ${state.filter==='all'?'show-both':'show-one'}">${[1,2].filter(c=>state.filter==='all'||state.filter===String(c)).map(renderCourt).join('')}</div>${benchCard}${renderOverflow()}`;
     if(e.status==='locked'&&!state.readyToScore){root.insertAdjacentHTML('afterbegin','<p class="readonly-warning" role="alert">Scores are read-only. Public scoring requires the V1.32 Supabase migration. Ask an organizer for assistance.</p>');}
