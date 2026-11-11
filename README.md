@@ -1,48 +1,52 @@
-# RallyRank V1.54 — five-team manual/random roster transfers & role-label fix
+# RallyRank V1.55 — Five-Team Assigned Position Fix (Update Only)
 
-**Update only** (based on V1.53). This is not a complete standalone website.
+This is an **incremental update based on V1.54**, not a complete replacement of your website.
 
-## Install in this order
+## Install
 
-1. **Back up** your Supabase database and current GitHub Pages files. The V1.53 migration must already be installed.
-2. In Supabase > SQL Editor, open **`supabase/upgrade-v1.54.txt`**, copy **all its contents**, and run it once. It upgrades the server-side rotation safely and repairs missing assigned positions on currently published five-team rotations.
-3. Copy the contents of `github-pages/` into the **repository root** of `https://github.com/farikolninja97/vb-autosorter`, replacing only the matching files:
+1. Back up your Supabase database and your current GitHub Pages files.
+2. In **Supabase → SQL Editor**, open **`supabase/upgrade-v1.55.txt`**, copy everything, and run it once. **V1.54's SQL migration must already be installed.**
+3. Copy only these four files from `github-pages/` into the root of your RallyRank GitHub repository:
    - `app.js`
-   - `five-rotation.js`
-   - `index.html`
    - `styles.css`
-   - `kiosk.js` (version footer only)
-   - `kiosk.html` (version/cache labels)
-4. Do **not** replace `config.js` or any other unchanged file. Nothing changes in `matchmaking.js`, `team-display.js`, `team-names.js`, `cos-theme.css`, or `kiosk.css`.
-5. Refresh the GitHub Pages site and your tablet kiosk, confirming both show **V1.54**.
+   - `index.html`
+   - `kiosk.html`
+4. **Do not overwrite `config.js`** or any other unchanged files, especially `matchmaking.js`, `team-display.js`, `five-rotation.js`, or `kiosk.js`.
+5. Refresh both the website and the kiosk. Check that each footer displays **V1.55**. If your browser has cached an older page, force refresh.
 
-## What changed
+## Fix for an already-published five-team rotation
 
-### Assigned role stays visible after a player moves
+On **Live Courts**, an admin will see **“⚠ Assigned positions are hidden in this session”** and a button:
 
-When Balance by position and Show positions on Live Courts & kiosk are **ON**, a player transferred from the outgoing team into an open roster slot keeps a nonempty assigned role. If the slot's role is missing, the server recovers a suitable role from the position data. A woman is **never** assigned Middle Blocker without selecting Middle as a primary or secondary preference. This may leave a warning that the team lacks a Middle specialist, even though all six playing slots are filled.
+**🏐 Show & restore assigned positions**
 
-The Supabase migration also backfills missing roles on an **already-live five-team rotation**, without overwriting nonempty assigned roles. Position visibility still follows the normal Show positions toggle, including in the kiosk.
+Tap it **once**. It turns on position balancing/visibility for that active five-team rotation and repairs missing assigned role labels based on the existing player positions. It does **not** regenerate teams, change who plays, move anyone, advance matches, alter scores, reset check-ins, or modify MMR.
 
-### Random by default, optional manual transfers BEFORE rotation
+This is especially useful for a five-team rotation started before V1.55 with position balancing OFF. It works in both real admin mode (after the migration) and Demo Mode. The kiosk reads the public session data and should show the restored assigned roles after refreshing.
 
-Once **both courts have entered their results**, the admin sees these actions left to right:
+## Defaults for new five-team rotations
 
-1. **⏹ End rotation early · Remake teams** (retains current early-end behavior)
-2. **👥 Manual transfers** (optional)
-3. **↻ Rotate to next games** (primary action)
+- Starting a **new** five-team rotation now defaults **Balance by volleyball position = ON** and **Show positions on Live Courts & kiosk = ON**.
+- Turning on five-team mode in Match Options before publishing also enables these two defaults.
+- You can still turn either setting OFF before publishing if you intentionally want names-only play. Other formats retain their existing defaults and preferences.
+- The new default does not secretly alter an **existing** event during the start/resume operation. Use the one-tap repair button for an already-published five-team rotation instead.
 
-Manual transfers opens a small dialog. It shows the team **coming OFF the court** and the incoming active teams' **open slots/needed positions**. For any slot, select the specific person who wishes to move. Leave any other selector at **🎲 Random eligible player** to fill that spot automatically. **All Random** immediately clears manual choices in one tap. Click **Use these transfers** to queue choices, then tap **Rotate** to apply them.
+## Verified in actual browser Demo Mode
 
-The manual plan is an **admin-only, local, unpublished draft** until Rotate is tapped; no player actually moves while editing the dialog. After Rotate, it is applied atomically on Supabase alongside the court rotation. Choices must be made after both results are known because the team coming out depends on the scores. A manual player cannot be selected for two slots. Stale/wrong teams or slots are blocked, and the database also checks that the player still belongs to the outgoing team. Any spaces not manually chosen use randomized role-aware selection rather than a fixed name/ID order.
+Using the real frontend Demo Mode code with a stubbed **authorized** Supabase admin, not an artificial page-only roster renderer:
 
-Players **permanently change teams for this rotation** as in V1.53; they do not become temporary loans. The outgoing team gains yellow "Sub needed" slots for every player who departs. Completed scores, MMR and check-ins remain intact, and nobody appears on two active rosters.
+- New five-team session starts with both position options ON.
+- Existing rotation with both options OFF: one tap restores assigned roles for all **24 active players**, with saved scores and MMR untouched.
+- With 25 checked-in players, new teams were **generated by the real matcher**, previewed, published, scored on both courts, and rotated. All 24 active assigned roles remained visible after rotation.
+- One manually selected transfer moved to the intended new team with an assigned role intact after a further rotation.
+- Desktop and narrow phone layouts displayed the roles without horizontal overflow or JavaScript exceptions.
+- Public kiosk was loaded against the public snapshot produced by the same Demo Mode rotation and showed all 24 assigned roles.
+- The V1.54 roster-rotation regression suite still passed **1,190 assertions**.
 
-## Verification performed
+**Live Supabase not verified:** The SQL has not been applied to your production project; these are local browser and code-level tests. Back up first and try a practice rotation after deployment.
 
-- **1,190 Node assertions** covering 24–30 registered players, 13 consecutive sets, full active rosters, unique player IDs, manual selection, no duplicate manual transfers, unqualified female Middle restrictions, and roles persisting after moves.
-- Browser tests (simulated Supabase) for a two-set flow: manual first, random next; selected player moves to the chosen receiving slot; incoming rosters have six members and assigned role labels; outgoing team shows exact missing spots; kiosk displays 24 assigned roles; responsive desktop/mobile layout; action order and one-tap All Random.
-- All three updated JavaScript files passed `node --check`.
-- **Live database not tested:** SQL has not been executed against the user's Supabase project. Make a backup and test a full rotation in Demo Mode and a practice live event before an important session. Demo Mode is browser-side and does not itself verify SQL correctness.
+## Files
 
-`tests/` contains optional runnable checks for maintainers; it does not need to be uploaded to GitHub Pages.
+- `github-pages/`: only the four modified website files. No configured credentials.
+- `supabase/upgrade-v1.55.txt`: migration as copy/paste-friendly `.txt`.
+- `tests/test-v155-demo.py`: optional Playwright browser regression test, for developers.
