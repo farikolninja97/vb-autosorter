@@ -1444,3 +1444,57 @@ html[data-theme="dark"] .rotation-transfer-dialog .transfer-about{background:#25
 html[data-theme="dark"] .team-draft .draft-player-details .draft-role-first{color:#a1d7ff}
 html[data-brand="cos"] .team-draft .draft-player-details .draft-role-first{color:#177585}
 html[data-brand="cos"][data-theme="dark"] .team-draft .draft-player-details .draft-role-first{color:#89ebea}
+
+/* V1.57 — admin-only registration bulk check-in */
+.bulk-attendance-shortcut{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 15px;border:1px dashed var(--border,#708096);border-radius:12px;margin:16px 0;background:var(--panel2,#1b2b3d)}
+.bulk-attendance-shortcut>div{display:grid;gap:4px;min-width:0}
+.bulk-attendance-shortcut strong{font-size:14px}
+.bulk-attendance-shortcut small{font-size:12px;opacity:.82}
+.registration-bulk-dialog{width:min(860px,calc(100vw - 24px));max-width:860px}
+.bulk-dialog-content{display:block}
+.bulk-source{display:block;width:100%;min-height:118px;max-height:28vh;resize:vertical;font:500 14px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;margin-top:8px}
+.bulk-source-actions,.bulk-batch-actions{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:12px 0}
+.bulk-batch-actions{margin-top:4px}
+.bulk-upload-label{cursor:pointer;position:relative;overflow:hidden}
+.bulk-upload-label input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.bulk-ocr-hint{font-size:12px;opacity:.83;line-height:1.45;margin:3px 0 8px}
+.bulk-summary{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+.bulk-summary>span{padding:5px 8px;border-radius:999px;background:var(--panel2,#1b2b3d);border:1px solid var(--border,#708096);font-size:11px;font-weight:800}
+.bulk-group{margin:16px 0;padding:11px;border:1px solid var(--border,#708096);border-radius:12px}
+.bulk-group-title{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.bulk-group-title strong{font-size:15px}
+.bulk-group-title span{font-size:12px;border-radius:999px;padding:4px 8px;background:var(--panel2,#1b2b3d);font-weight:800}
+.bulk-group>p{font-size:12px;opacity:.81;line-height:1.45;margin:5px 0 10px}
+.bulk-group-ready{border-color:#229d69}
+.bulk-group-review{border-color:#b38a27}
+.bulk-group-missing{border-color:#cf6664}
+.bulk-group-already{opacity:.75}
+.bulk-group-list{display:grid;gap:8px}
+.bulk-person{background:var(--panel2,#1b2b3d);border:1px solid var(--border,#708096);border-radius:9px;padding:9px 11px;display:grid;gap:8px;min-width:0}
+.bulk-person-head{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.bulk-person-head>div{min-width:0;display:grid;gap:2px}
+.bulk-person-head strong{font-size:13px;overflow-wrap:anywhere}
+.bulk-person-head small{font-size:11px;opacity:.8}
+.bulk-tick{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.bulk-tick input{width:19px;height:19px;accent-color:#159a69}
+.bulk-match-name{font-size:12px;font-weight:800;line-height:1.5;overflow-wrap:anywhere}
+.bulk-match-name small{font-weight:500;opacity:.75}
+.bulk-choice-label{font-size:11px;display:grid;gap:5px;font-weight:750}
+.bulk-choice{width:100%;min-width:0;font-size:13px}
+.bulk-person .btn{justify-self:start}
+.bulk-already{font-size:12px;font-weight:800;color:#28ab70}
+.bulk-person-duplicate{border-color:#d84646}
+.bulk-warning,.bulk-error{color:#ef7771;font-size:12px;font-weight:750;line-height:1.4}
+.bulk-error{border:1px solid #bb4545;border-radius:8px;padding:9px;margin:9px 0}
+.registration-bulk-dialog .session-dialog-footer{gap:10px}
+#bulk-selected-count{font-size:12px;line-height:1.4}
+@media(max-width:650px){
+ .bulk-attendance-shortcut{align-items:stretch;flex-direction:column}
+ .bulk-attendance-shortcut .btn{width:100%}
+ .registration-bulk-dialog{width:calc(100vw - 10px);max-height:calc(100dvh - 12px)}
+ .registration-bulk-dialog .session-dialog-footer{flex-wrap:wrap}
+ .registration-bulk-dialog .session-dialog-footer .session-dialog-actions{width:100%;display:grid;grid-template-columns:1fr 1fr;gap:7px}
+ .registration-bulk-dialog .session-dialog-footer .btn{padding:9px 7px;font-size:12px}
+ .bulk-person-head{align-items:flex-start}
+ .bulk-source-actions .btn{font-size:12px}
+}

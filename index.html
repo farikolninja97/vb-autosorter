@@ -11,7 +11,7 @@
   <link rel="icon" type="image/svg+xml" href="https://cosvolleyball.github.io/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="https://cosvolleyball.github.io/favicon-32.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="https://cosvolleyball.github.io/apple-touch-icon.png" />
-  <link rel="stylesheet" href="./styles.css?v=1.56" />
+  <link rel="stylesheet" href="./styles.css?v=1.57" />
   <link rel="stylesheet" href="./cos-theme.css?v=1.48" />
 </head>
 <body>
@@ -104,7 +104,24 @@
         <footer class="session-dialog-footer"><button type="button" class="btn btn-secondary btn-small" data-action="random-rotation-transfers">🎲 All random</button><div class="session-dialog-actions"><button type="button" class="btn btn-secondary btn-small" data-action="close-rotation-transfers">Cancel</button><button type="button" class="btn btn-primary btn-small" data-action="save-rotation-transfers">✓ Use these transfers</button></div></footer>
       </div>
     </dialog>
-    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> MADE FOR THE COURT</span><span>V1.56</span></footer>
+    <dialog id="registration-bulk-dialog" class="session-settings-dialog registration-bulk-dialog" aria-labelledby="registration-bulk-title">
+      <div class="session-dialog-shell">
+        <header class="session-dialog-header"><div><span class="session-dialog-eyebrow">ADMIN ONLY · CHECK-IN</span><h2 id="registration-bulk-title">☑ Bulk check-in from registration</h2><p>Match signup names to your saved RallyRank players. Review mismatches before checking in.</p></div><button type="button" class="session-dialog-close" data-action="close-bulk-registration" aria-label="Close bulk check-in">✕</button></header>
+        <div class="session-dialog-content bulk-dialog-content">
+          <label class="label-input" for="bulk-registration-text">Paste registered player names (one per line)</label>
+          <textarea class="field bulk-source" id="bulk-registration-text" spellcheck="false" rows="5" placeholder="Trenner Nolan
+Luis Rodriguez
+Kira Ferguson
+..."></textarea>
+          <div class="bulk-source-actions"><button type="button" class="btn btn-primary btn-small" data-action="bulk-match-names">⌕ Match names</button><label class="btn btn-secondary btn-small bulk-upload-label">📷 Import screenshot <input type="file" id="bulk-screenshot" accept="image/*" aria-label="Import registration screenshot" /></label></div>
+          <p class="bulk-ocr-hint" id="bulk-ocr-status" aria-live="polite">Screenshot recognition is optional and runs in your browser; review any misspelled names before checking in.</p>
+          <div class="bulk-batch-actions"><button type="button" class="btn btn-secondary btn-small" data-action="bulk-select-confident">✓ Select confident matches</button><button type="button" class="btn btn-secondary btn-small" data-action="bulk-clear-selection">Clear selection</button></div>
+          <div id="bulk-registration-results" aria-live="polite"></div>
+        </div>
+        <footer class="session-dialog-footer"><span id="bulk-selected-count">0 selected</span><div class="session-dialog-actions"><button type="button" class="btn btn-secondary btn-small" data-action="close-bulk-registration">Close</button><button type="button" id="bulk-checkin-apply" class="btn btn-primary btn-small" data-action="bulk-checkin-apply" disabled>✓ Check in 0 selected</button></div></footer>
+      </div>
+    </dialog>
+    <footer class="site-footer"><span>RALLYRANK <span class="footer-dot">●</span> MADE FOR THE COURT</span><span>V1.57</span></footer>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./config.js?v=1.48"></script>
@@ -112,6 +129,7 @@
   <script src="./team-names.js?v=1.48"></script>
   <script src="./team-display.js?v=1.51"></script>
   <script src="./five-rotation.js?v=1.55"></script>
-  <script src="./app.js?v=1.56" defer></script>
+  <script src="./registration-match.js?v=1.57"></script>
+  <script src="./app.js?v=1.57" defer></script>
 </body>
 </html>

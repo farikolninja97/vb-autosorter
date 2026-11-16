@@ -109,11 +109,15 @@
   let attendanceSearch='',attendanceDropdownOpen=false,attendanceActive=0;
   // Allows a new profile to be created from Check-in and then returns the admin there.
   let returnToCheckinAfterPlayerAdd=false;
+  let returnToBulkAfterPlayerAdd=false;
+  // Import review never sends uploaded registration names to Supabase. Only
+  // the explicitly selected, existing player IDs are used for check-in.
+  let bulkRegistrationText='',bulkRegistrationRows=[],bulkIgnoredDuplicates=0,bulkProcessing=false;
   // Sorting may take several seconds on older tablets. Make the progress
   // message visible before the CPU-heavy matcher starts.
   let generatingTeams=false;
   let publicAttendanceSearch='';
-  const APP_VERSION='1.56';
+  const APP_VERSION='1.57';
   if(document.body?.dataset)document.body.dataset.rallyrankVersion=APP_VERSION;
   let showAllProfiles=false;
   // Admin-only, unsaved draft. Never transmits profiles or scores until Publish.
@@ -906,7 +910,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const done=fiveRotation()?rotationWaveMatches().filter(m=>m.winner_team_id).length:pub.matches.filter(m=>m.winner_team_id).length;
     const target=fiveRotation()?2:totalMatchesFor(e);
     const launch=e.status==='open'?`<section class="panel checkin-launch matchday-action-card" aria-label="Create match teams"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">${draft?'STEP 3 · PRIVATE TEAM PREVIEW':'STEP 2 · CHECK IN PLAYERS'}</span><strong>${draft?'🏐 Your team preview is ready':`✓ ${safe(e.title)} · ${count} checked in`}</strong><small>${safe(courtSizeLabel(e))} · ${safe(formatCourtCounts(e))} · ${count}/${e.capacity} player spots · Round ${Number(e.round_number)||1}</small></div><span class="pill ${ready?'win':'wait'}">${ready?draft?'Ready to publish':'Ready to make teams':`${Math.max(0,needed-count)} more needed`}</span></div>
-      <div class="matchday-primary-actions">${draft?`<button class="btn btn-primary" type="button" data-action="checkin-review-teams">✓ Review &amp; publish teams →</button><button class="btn btn-secondary" type="button" data-action="checkin-preview-teams">↻ Reshuffle preview</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-preview-teams" ${ready?'':'disabled'}>⚡ Make teams for Round ${Number(e.round_number)||1}</button>`}<button class="btn btn-secondary" type="button" data-action="open-session-settings">⚙ Match options</button><button class="btn btn-secondary" type="button" data-action="checkin-new-player">＋ New player</button></div>
+      <div class="matchday-primary-actions">${draft?`<button class="btn btn-primary" type="button" data-action="checkin-review-teams">✓ Review &amp; publish teams →</button><button class="btn btn-secondary" type="button" data-action="checkin-preview-teams">↻ Reshuffle preview</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-preview-teams" ${ready?'':'disabled'}>⚡ Make teams for Round ${Number(e.round_number)||1}</button>`}<button class="btn btn-secondary" type="button" data-action="open-session-settings">⚙ Match options</button><button class="btn btn-secondary" type="button" data-action="checkin-new-player">＋ New player</button><button class="btn btn-secondary" type="button" data-action="open-bulk-registration">☑ Bulk check-in from registration</button></div>
       <p class="matchday-help">${draft?'Preview is admin-only. Review positions and teammates before publishing; publishing is the final confirmation.':ready?`Uses the options shown below and generates a private preview. ${count<e.capacity?`${e.capacity-count} substitute spots will be filled.`:count>e.capacity?`${count-e.capacity} randomly chosen players will be in overflow for this round.`:''}`:`Check in at least ${needed} players. Positions here update automatically as players arrive.`}</p></section>`
       :fiveRotation()?`<section class="panel checkin-launch matchday-action-card ${isRotationWaveComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">FIVE-TEAM ROTATION · SET ${Number(pub.five_rotation.wave)}</span><strong>${isRotationWaveComplete()?'✅ Both courts scored — rotate teams':'🏐 Two matches in progress'}</strong><small>${done} of 2 court scores · ${pub.matches.filter(m=>m.winner_team_id).length} total scored · Check-ins stay</small></div></div><div class="matchday-primary-actions"><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">⏹ End rotation &amp; remake teams</button><button type="button" class="btn btn-secondary" data-action="manual-rotation-transfers" ${isRotationWaveComplete()?'':'disabled'}>👥 Manual transfers${rotationManualKey===rotationSelectionKey()&&rotationManualPlan.length?` (${rotationManualPlan.length})`:''}</button>${isRotationWaveComplete()?`<button class="btn btn-primary" type="button" data-action="rotate-five-teams">↻ Rotate to next games</button>`:`<button class="btn btn-primary" type="button" data-action="checkin-courts">🔵🔴 Enter scores</button>`}</div><p class="matchday-help">When teams rotate, random player transfers fill open spots unless you select manual transfers before rotating. Recorded MMR stays saved.</p></section>`
       :`<section class="panel checkin-launch matchday-action-card ${isRoundComplete()?'matchday-round-finished':''}"><div class="checkin-launch-heading"><div><span class="matchday-phase-label">STEP 4 · ${isRoundComplete()?'ROUND COMPLETE':'GAMES UNDERWAY'}</span><strong>${isRoundComplete()?'✅ All scores recorded — ready for new teams':'🏐 Teams are playing'}</strong><small>${done} of ${target} matches recorded · Round ${Number(e.round_number)||1} · Check-ins carry over</small></div><span class="pill ${isRoundComplete()?'win':'muted'}">${done}/${target} scored</span></div><div class="matchday-score-progress" role="progressbar" aria-valuemin="0" aria-valuemax="${target}" aria-valuenow="${done}" aria-label="Recorded match results"><span style="width:${target?Math.round(100*done/target):0}%"></span></div><div class="matchday-primary-actions">${isRoundComplete()?`<button type="button" class="btn btn-primary" data-action="next-teams-fast">⚡ Next teams · Same options</button><button type="button" class="btn btn-secondary" data-action="next-round-customize">⚙ Change options for next round</button>`:`<button type="button" class="btn btn-primary" data-action="checkin-courts">🔵🔴 View matches &amp; enter scores</button><button type="button" class="btn btn-secondary btn-early-round" data-action="end-round-early">↻ End round early &amp; remake teams</button>`}</div><p class="matchday-help">${isRoundComplete()?'Next Teams archives the completed round, keeps every check-in, and prepares a fresh private preview with the same options. You will review before publishing.':'Normally, finish all matches before making new teams. If play must stop, use End round early; any recorded scores and MMR are preserved.'}</p></section>`;
@@ -1165,6 +1169,149 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       <div class="attendance-position-chips">${POSITIONS.map(position=>`<span class="attendance-position-chip" title="${safe(labels[position])}: ${counts.get(position)} checked in" aria-label="${safe(labels[position])}: ${counts.get(position)} checked in"><span>${safe(names[position])}</span><b>${counts.get(position)}</b></span>`).join('')}</div>
     </section>`;
   }
+  // Bulk registration import: matched IDs are suggestions until an admin checks
+  // a box. Possible/ambiguous names are NEVER preselected automatically.
+  function bulkMatcher(){return window.RallyRegistrationMatch;}
+  function bulkRematch(preserve=false){
+    const matcher=bulkMatcher();if(!matcher)return;
+    const parsed=matcher.parseNames(bulkRegistrationText);
+    const old=new Map(preserve?bulkRegistrationRows.map(row=>[matcher.normalize(row.name),row]):[]);
+    const profiles=admin?.players||[];
+    bulkIgnoredDuplicates=parsed.duplicates;
+    bulkRegistrationRows=parsed.names.slice(0,120).map((name,index)=>{
+      const result=matcher.match(name,profiles),prior=old.get(matcher.normalize(name));
+      const previousProfile=profiles.find(p=>p.id===prior?.selectedId);
+      const manuallyResolved=Boolean(prior?.manual && previousProfile);
+      const selectedId=manuallyResolved?prior.selectedId:result.suggestedId;
+      const status=manuallyResolved?'manual':result.status;
+      return {key:index,name,status,selectedId,selected:manuallyResolved?prior.selected===true:result.status==='matched',manual:manuallyResolved,candidates:result.candidates};
+    });
+  }
+  function bulkOpen(){
+    if(!adminGranted||pub?.event?.status!=='open')return;
+    const dialog=document.getElementById('registration-bulk-dialog');if(!dialog)return;
+    if(!dialog.open)dialog.showModal();
+    bulkRematch(true);
+    const area=document.getElementById('bulk-registration-text');
+    if(area)area.value=bulkRegistrationText;
+    renderBulkRegistrationRows();
+  }
+  function bulkClose(){document.getElementById('registration-bulk-dialog')?.close();}
+  function bulkRowGroup(row){
+    // A fuzzy guess isn't resolved just because the suggested player is here.
+    if(row.status==='review'&&!row.manual)return 'review';
+    if(row.selectedId&&(pub?.roster||[]).some(p=>p.id===row.selectedId))return 'already';
+    if(row.manual||row.status==='matched')return 'matched';
+    return 'unmatched';
+  }
+  function renderBulkRegistrationRows(){
+    const target=document.getElementById('bulk-registration-results');if(!target)return;
+    const profiles=(admin?.players||[]).slice().sort((a,b)=>a.name.localeCompare(b.name));
+    const byId=new Map(profiles.map(p=>[p.id,p]));
+    const checked=new Set((pub?.roster||[]).map(p=>p.id));
+    const rows=bulkRegistrationRows;
+    const groups={matched:[],review:[],unmatched:[],already:[]};
+    rows.forEach(row=>groups[bulkRowGroup(row)].push(row));
+    const enabled=rows.filter(row=>row.selected&&row.selectedId&&!checked.has(row.selectedId));
+    const ids=enabled.map(row=>row.selectedId);
+    const duplicates=new Set(ids.filter((id,index)=>ids.indexOf(id)!==index));
+    const available=Math.max(0,(pub?.event?.overflow_enabled===true?MAX_DAILY_CHECKINS:pub?.event?.capacity||0)-checked.size);
+    const tooMany=enabled.length>available;
+    function chooser(row){
+      const current=row.selectedId||'';
+      const best=row.candidates||[];
+      const ordered=[...best.map(x=>byId.get(x.id)).filter(Boolean),...profiles.filter(p=>!best.some(x=>x.id===p.id))];
+      return `<label class="bulk-choice-label">${row.status==='unmatched'&&!row.manual?'Find an existing profile':'Profile to check in'}<select class="field bulk-choice" data-row="${row.key}" aria-label="Match ${safe(row.name)} to an existing player"><option value="">— Choose a player —</option>${ordered.map(p=>`<option value="${safe(p.id)}" ${p.id===current?'selected':''}>${safe(p.name)}${best.some(x=>x.id===p.id)?' · Suggested':''}</option>`).join('')}</select></label>`;
+    }
+    const cards=(data)=>data.map(row=>{
+      const profile=byId.get(row.selectedId),already=Boolean(profile&&checked.has(profile.id)),selected=row.selected&&!already;
+      const conflict=selected&&duplicates.has(row.selectedId);
+      const type=bulkRowGroup(row);
+      const matchLabel=type==='matched'?(row.manual?'Manually matched':'Confident match'):type==='already'?'Already checked in':type==='review'?'Review suggested match':'No matching profile found';
+      return `<div class="bulk-person ${conflict?'bulk-person-duplicate':''}" data-bulk-row="${row.key}">
+        <div class="bulk-person-head"><div><strong>${safe(row.name)}</strong><small>${safe(matchLabel)}</small></div>
+          ${type==='already'||already?'<span class="bulk-already">✓ Here</span>':row.selectedId?`<label class="bulk-tick"><input type="checkbox" class="bulk-select" data-row="${row.key}" ${selected?'checked':''} ${!profile?'disabled':''} /> <span>Check in</span></label>`:''}
+        </div>
+        ${profile?`<div class="bulk-match-name">→ ${safe(profile.name)} <small>· ${safe(profile.position||'Unspecified')}</small></div>`:''}
+        ${['review','unmatched'].includes(type)||row.manual?chooser(row):''}
+        ${type==='unmatched'?`<button type="button" class="btn btn-small btn-secondary" data-action="bulk-create-profile" data-row="${row.key}">＋ Create new profile for ${safe(row.name)}</button>`:''}
+        ${conflict?'<span class="bulk-warning">This profile is selected twice. Choose a different match.</span>':''}
+      </div>`;
+    }).join('');
+    const section=(title,items,cls,desc)=>items.length?`<section class="bulk-group ${cls}"><div class="bulk-group-title"><strong>${title}</strong><span>${items.length}</span></div><p>${desc}</p><div class="bulk-group-list">${cards(items)}</div></section>`:'';
+    const summary=`<div class="bulk-summary" aria-live="polite"><span>${rows.length} registration names</span><span>${groups.matched.length} matched</span><span>${groups.review.length} to review</span><span>${groups.unmatched.length} not found</span>${bulkIgnoredDuplicates?`<span>${bulkIgnoredDuplicates} duplicate line(s) skipped</span>`:''}</div>`;
+    const note=duplicates.size?'<p class="bulk-error" role="alert">One saved profile was selected for more than one registration name. Resolve the duplicate before checking in.</p>':tooMany?`<p class="bulk-error" role="alert">${enabled.length} selected, but only ${available} attendance spot(s) remain. Enable Overflow Players in Match Options or reduce the selection.</p>`:!rows.length?'<p class="subtle">Paste registered names, one per line, then select <strong>Match names</strong>. You can also import a screenshot.</p>':'';
+    target.innerHTML=summary+note+
+      section('Ready to check in',groups.matched,'bulk-group-ready','Confident matches are selected. Verify the saved profile before checking in.')+
+      section('Possible matches · please confirm',groups.review,'bulk-group-review','These are only suggestions. Check the box to approve the match, or choose a different profile.')+
+      section('Names not found',groups.unmatched,'bulk-group-missing','Check spelling, select an existing profile, or create a new player profile without losing this list.')+
+      section('Already checked in',groups.already,'bulk-group-already','These players are already here and will not be checked in twice.');
+    const submit=document.getElementById('bulk-checkin-apply');
+    if(submit){submit.disabled=bulkProcessing||!enabled.length||tooMany||Boolean(duplicates.size);submit.textContent=bulkProcessing?'Checking in…':`✓ Check in ${enabled.length} selected`;} 
+    const count=document.getElementById('bulk-selected-count');if(count)count.textContent=`${enabled.length} selected · ${available} spots available`;
+  }
+  async function bulkApplyCheckins(){
+    if(bulkProcessing||mutating||!adminGranted||pub?.event?.status!=='open')return;
+    const here=new Set((pub.roster||[]).map(p=>p.id));
+    const ids=bulkRegistrationRows.filter(row=>row.selected&&row.selectedId&&!here.has(row.selectedId)).map(row=>row.selectedId);
+    const limit=Math.max(0,(pub.event.overflow_enabled===true?MAX_DAILY_CHECKINS:pub.event.capacity)-here.size);
+    if(!ids.length||ids.length>limit||new Set(ids).size!==ids.length){renderBulkRegistrationRows();return;}
+    bulkProcessing=true;mutating=true;renderBulkRegistrationRows();
+    let added=0;const errors=[];
+    try{
+      // Reuse the same authenticated, server-validated check-in API used by
+      // individual check-ins. Sequential submission avoids capacity races.
+      for(const pid of ids){
+        try{await api.checkIn(pid);added++;}
+        catch(e){errors.push(`${(admin.players||[]).find(p=>p.id===pid)?.name||'Player'}: ${errText(e)}`);}
+      }
+    }finally{
+      mutating=false;bulkProcessing=false;
+      await refresh(true);
+      bulkRematch(true);
+      renderBulkRegistrationRows();
+      if(added)flash(`${added} player${added===1?'':'s'} checked in from registration.`);
+      if(errors.length){flash(`${errors.length} check-in(s) failed: ${errors.slice(0,2).join(' | ')}`,true);}
+    }
+  }
+  async function bulkImportScreenshot(file){
+    if(!file||!adminGranted)return;
+    const notice=document.getElementById('bulk-ocr-status');
+    if(!/^image\//.test(file.type)){if(notice)notice.textContent='Choose a PNG, JPEG, or other image file.';return;}
+    if(file.size>12*1024*1024){if(notice)notice.textContent='Image is too large (12 MB maximum).';return;}
+    if(notice)notice.textContent='Reading screenshot locally in your browser…';
+    const button=document.getElementById('bulk-screenshot');if(button)button.disabled=true;
+    try{
+      if(!window.Tesseract){
+        await new Promise((resolve,reject)=>{
+          const script=document.createElement('script');
+          script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+          script.async=true;script.onload=resolve;script.onerror=()=>reject(Error('Screenshot reader could not load. Paste names instead.'));
+          document.head.appendChild(script);
+        });
+      }
+      const url=URL.createObjectURL(file);
+      const img=await new Promise((resolve,reject)=>{
+        const picture=new Image();picture.onload=()=>resolve(picture);picture.onerror=()=>reject(Error('Could not open screenshot.'));
+        picture.src=url;
+      }).finally(()=>URL.revokeObjectURL(url));
+      // Two-column registration websites are read one column at a time.
+      const columns=img.width>=550?2:1;const texts=[];
+      for(let column=0;column<columns;column++){
+        const canvas=document.createElement('canvas');canvas.width=Math.ceil(img.width/columns);canvas.height=img.height;
+        canvas.getContext('2d').drawImage(img,column*canvas.width,0,canvas.width,img.height,0,0,canvas.width,canvas.height);
+        const recognized=await window.Tesseract.recognize(canvas,'eng');
+        texts.push(String(recognized?.data?.text||''));
+      }
+      const matcher=bulkMatcher(),names=matcher.parseNames(texts.join('\n')).names;
+      if(!names.length)throw Error('No names recognized. Try copying names as text instead.');
+      const original=matcher.parseNames(bulkRegistrationText).names;
+      bulkRegistrationText=[...original,...names].join('\n');
+      const area=document.getElementById('bulk-registration-text');if(area)area.value=bulkRegistrationText;
+      bulkRematch();renderBulkRegistrationRows();
+      if(notice)notice.textContent=`Found ${names.length} possible name lines. Please review OCR spelling and matches before checking in.`;
+    }catch(e){if(notice)notice.textContent=errText(e);}finally{if(button)button.disabled=false;}
+  }
   function renderAttendance(){
     const e=pub?.event;
     if(!e)return '';
@@ -1175,6 +1322,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
       <p class="subtle">Check in players from your saved profiles. Check-ins remain for all rounds today. Only checked-in players are eligible for team creation.</p>
       <div class="attendance-stats"><div><strong>${checked.length}</strong><span>Here today</span></div><div><strong>${Math.max(0,all.length-checked.length)}</strong><span>Not checked in</span></div><div><strong>${Math.max(0,e.capacity-checked.length)}</strong><span>Open team spots</span></div></div>
       ${renderCheckedInPositionCounts()}
+      ${editable?`<div class="bulk-attendance-shortcut"><div><strong>Registration list ready?</strong><small>Match names from your signup website and check in multiple players in one go.</small></div><button type="button" class="btn btn-secondary" data-action="open-bulk-registration">☑ Bulk check-in from registration</button></div>`:''}
       ${e.overflow_enabled?`<p class="hint overflow-checkin-note">⏳ Overflow mode is ON. ${Math.max(0,checked.length-e.capacity)} of ${checked.length} players will wait this round if teams are made now. Players are randomly redrawn for every new preview; all stay checked in.</p>`:''}
       ${editable?`<div class="attendance-find"><label class="label-input" for="attendance-search">Find a player to check in</label><div class="attendance-search-wrap"><span class="attendance-search-icon" aria-hidden="true">⌕</span><input id="attendance-search" type="search" class="field" placeholder="Search players…" value="${safe(attendanceSearch)}" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen)}" aria-describedby="attendance-search-hint" role="combobox" aria-label="Find registered player" /><button id="attendance-browse-all" class="attendance-browse-toggle" type="button" data-action="attendance-browse-all" aria-controls="attendance-results" aria-expanded="${Boolean(attendanceDropdownOpen&&!attendanceSearch.trim())}" aria-pressed="${Boolean(attendanceDropdownOpen&&!attendanceSearch.trim())}">☷ All available</button><div class="attendance-results" id="attendance-results" role="listbox" aria-label="Available and matching player profiles" ${attendanceDropdownOpen?'':'hidden'}>${attendanceSuggestions()}</div></div><p class="attendance-search-hint" id="attendance-search-hint">Tap the field or <strong>All available</strong> to browse every unchecked player, or type to search. Tap <strong>＋ Check in</strong> or use ↓ and Enter.</p></div>`:'<div class="hint">Teams are currently playing. Attendance changes reopen after this round ends.</div>'}
       <div class="attendance-list-head"><div><h4>Checked-in players</h4><span class="small-caps">${here.length} of ${all.length} profiles</span></div>${editable?'<span class="attendance-hint">Tap Remove if someone leaves</span>':''}</div>
@@ -1528,7 +1676,7 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     const saved=await act(()=>api.report(match.id,winner.id,a,b),`Court ${match.court} result saved: ${teamName(winner)} wins ${Math.max(a,b)}–${Math.min(a,b)}.`);
     if(saved)scoreDrafts.delete(match.id);else await refresh(true); // Another device may have saved first.
   }
-  document.addEventListener('submit',async ev=>{const form=ev.target;if(form.classList.contains('live-score-form')){ev.preventDefault();await handleScore(form);return;}if(!['login-form','create-form','add-player-form'].includes(form.id))return;ev.preventDefault();const values=new FormData(form);if(form.id==='add-player-form'){const name=String(values.get('name')||'').trim(),tier=String(values.get('tier')||''),position=String(values.get('position')||''),gender=String(values.get('gender')||'Unspecified'),secondaryPosition=String(values.get('secondary_position')||'Unspecified'),checkIn=values.get('checkin')==='on',customRaw=String(values.get('custom_mmr')??'').trim(),customMmr=tier==='custom'&&/^\d+$/.test(customRaw)?Number(customRaw):null;const added=await act(()=>api.addPlayer(name,tier,position,checkIn,gender,secondaryPosition,customMmr),`${name} added${checkIn?' and checked in':''}.`);if(added&&returnToCheckinAfterPlayerAdd){returnToCheckinAfterPlayerAdd=false;switchTab('signup');$('#attendance-search')?.focus({preventScroll:true});}}else if(form.id==='create-form'){const title=String(values.get('title')||'').trim(),date=String(values.get('date')||''),size=Number(values.get('size')),size2=Number(values.get('size2')),count1=Number(values.get('count1')),count2=Number(values.get('count2')),namingMode=String(values.get('namingMode')||'numbers'),ignoreMmr=values.get('ignoreMmr')==='on',fiveEnabled=values.get('fiveRotation')==='on';const started=await act(()=>api.createEvent(title,date,size,size2,count1,count2,namingMode,ignoreMmr,fiveEnabled),'Session created. Check-in is open.');if(started){switchTab('signup');attendanceSearch='';$('#attendance-search')?.focus({preventScroll:true});}}else{if(!db){flash('Add your Supabase configuration first.',true);return;}try{const {data,error}=await db.auth.signInWithPassword({email:String(values.get('email')),password:String(values.get('password'))});if(error)throw error;user=data.user;await refresh();if(adminGranted){flash('Admin signed in.');if(!pub?.event)switchTab('signup');}}catch(e){flash(errText(e),true);}}});
+  document.addEventListener('submit',async ev=>{const form=ev.target;if(form.classList.contains('live-score-form')){ev.preventDefault();await handleScore(form);return;}if(!['login-form','create-form','add-player-form'].includes(form.id))return;ev.preventDefault();const values=new FormData(form);if(form.id==='add-player-form'){const name=String(values.get('name')||'').trim(),tier=String(values.get('tier')||''),position=String(values.get('position')||''),gender=String(values.get('gender')||'Unspecified'),secondaryPosition=String(values.get('secondary_position')||'Unspecified'),checkIn=values.get('checkin')==='on',customRaw=String(values.get('custom_mmr')??'').trim(),customMmr=tier==='custom'&&/^\d+$/.test(customRaw)?Number(customRaw):null;const added=await act(()=>api.addPlayer(name,tier,position,checkIn,gender,secondaryPosition,customMmr),`${name} added${checkIn?' and checked in':''}.`);if(added&&returnToCheckinAfterPlayerAdd){returnToCheckinAfterPlayerAdd=false;switchTab('signup');if(returnToBulkAfterPlayerAdd){returnToBulkAfterPlayerAdd=false;bulkRematch(true);bulkOpen();}else $('#attendance-search')?.focus({preventScroll:true});}}else if(form.id==='create-form'){const title=String(values.get('title')||'').trim(),date=String(values.get('date')||''),size=Number(values.get('size')),size2=Number(values.get('size2')),count1=Number(values.get('count1')),count2=Number(values.get('count2')),namingMode=String(values.get('namingMode')||'numbers'),ignoreMmr=values.get('ignoreMmr')==='on',fiveEnabled=values.get('fiveRotation')==='on';const started=await act(()=>api.createEvent(title,date,size,size2,count1,count2,namingMode,ignoreMmr,fiveEnabled),'Session created. Check-in is open.');if(started){switchTab('signup');attendanceSearch='';$('#attendance-search')?.focus({preventScroll:true});}}else{if(!db){flash('Add your Supabase configuration first.',true);return;}try{const {data,error}=await db.auth.signInWithPassword({email:String(values.get('email')),password:String(values.get('password'))});if(error)throw error;user=data.user;await refresh();if(adminGranted){flash('Admin signed in.');if(!pub?.event)switchTab('signup');}}catch(e){flash(errText(e),true);}}});
   $('#demo-toggle')?.addEventListener('click',async ()=>{if(!adminGranted)return;if(demo)await setDemoMode(false);else await setDemoMode(true);});
   document.addEventListener('click',async ev=>{const nav=ev.target.closest('[data-tab]');if(nav){switchTab(nav.dataset.tab);return;}const btn=ev.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action;if((action.startsWith('demo-')||action==='exit-demo'||action==='jump-ratings')&&!adminGranted)return;switch(action){
     case 'exit-demo':await setDemoMode(false);break;
@@ -1571,6 +1719,27 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     case 'view-attendance':switchTab('who');break;
     case 'checkin-start-session':if(adminGranted&&!pub?.event){switchTab('signup');$('#new-title')?.focus({preventScroll:true});}break;
     case 'checkin-courts':if(adminGranted){if(pub?.event?.status==='locked')switchTab('courts');else openSessionSettings();}break;
+    case 'open-bulk-registration':bulkOpen();break;
+    case 'close-bulk-registration':bulkClose();break;
+    case 'bulk-match-names':{
+      const input=document.getElementById('bulk-registration-text');
+      bulkRegistrationText=String(input?.value||'');bulkRematch();renderBulkRegistrationRows();break;
+    }
+    case 'bulk-select-confident':{
+      const checked=new Set((pub?.roster||[]).map(p=>p.id));
+      bulkRegistrationRows.forEach(row=>{if(row.status==='matched'&&row.selectedId&&!checked.has(row.selectedId))row.selected=true;});
+      renderBulkRegistrationRows();break;
+    }
+    case 'bulk-clear-selection':bulkRegistrationRows.forEach(row=>row.selected=false);renderBulkRegistrationRows();break;
+    case 'bulk-checkin-apply':await bulkApplyCheckins();break;
+    case 'bulk-create-profile':{
+      if(!adminGranted||pub?.event?.status!=='open')break;
+      const row=bulkRegistrationRows[Number(btn.dataset.row)];if(!row)break;
+      returnToCheckinAfterPlayerAdd=true;returnToBulkAfterPlayerAdd=true;
+      bulkClose();switchTab('admin');
+      const field=document.getElementById('add-name');if(field){field.value=row.name;field.focus({preventScroll:true});field.scrollIntoView({block:'center'});}
+      break;
+    }
     case 'checkin-new-player':if(adminGranted){returnToCheckinAfterPlayerAdd=true;switchTab('admin');$('#add-name')?.focus({preventScroll:true});}break;
     case 'checkin-preview-teams':if(adminGranted&&pub?.event?.status==='open'){
       if(pub.roster.length<minimumPlayersFor(pub.event)||(pub.roster.length>pub.event.capacity&&!pub.event.overflow_enabled)){flash('Check-in is not ready for preview yet.',true);break;}
@@ -1718,8 +1887,14 @@ $('#signup-body').innerHTML=adminGranted?renderSignup():'';$('#courts-body').inn
     }
     case 'logout':if(db)await db.auth.signOut();user=null;admin=null;adminGranted=false;showMmr=false;if(demo)await setDemoMode(false);await refresh(true);flash('Signed out.');break;
   }});
-  document.addEventListener('change',async ev=>{if(ev.target?.closest('#create-form'))updateCreateSessionSummary();if(ev.target?.id==='team-naming-mode'){if(!adminGranted||!pub?.event)return;const mode=ev.target.value;ev.target.disabled=true;await act(()=>api.setTeamNamingMode(pub.event.id,mode),mode==='funny'?'Funny volleyball team names enabled for everyone.':'Numbered teams enabled: Blue 1–3, Red 4–6.');return;}if(ev.target?.id==='score-target-select'){if(!adminGranted||pub?.event?.status!=='open')return;const target=Number(ev.target.value);ev.target.disabled=true;await act(()=>api.setTargetScore(pub.event.id,target),`Target set to ${target}, win by 2.`);return;}if(ev.target?.id==='show-player-positions-toggle'){if(!adminGranted||!pub?.event||admin?.position_balance!==true)return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setShowPlayerPositions(pub.event.id,enabled),enabled?'Positions now shown on Live Courts and kiosk.':'Positions hidden on Live Courts and kiosk.');return;}if(['ignore-mmr-toggle','checkin-ignore-mmr-toggle'].includes(ev.target?.id)){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setIgnoreMmr(pub.event.id,enabled),enabled?'MMR ignored for team creation; results still affect ratings.':'MMR tie-breaker restored; roles, gender and teammates still take priority.');return;}if(ev.target?.id==='gender-balance-toggle'){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setGenderBalance(pub.event.id,enabled),enabled?'Women balancing enabled for the next round.':'Women balancing disabled.');return;}if(ev.target?.id==='position-balance-toggle'){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setPositionBalance(pub.event.id,enabled),enabled?'Position-aware sorting enabled.':'Position-aware sorting disabled.');return;}if(ev.target?.id==='add-tier'){const custom=ev.target.value==='custom',area=$('#new-player-custom-mmr'),input=$('#add-custom-mmr');if(area&&input){area.hidden=!custom;input.disabled=!custom;input.required=custom;}}if(ev.target?.classList?.contains('tier-preset')&&ev.target.value){ev.target.closest('.profile-controls').querySelector('.profile-mmr').value=ev.target.value;}if(ev.target?.id==='leaderboard-filter'&&adminGranted){leaderboardPosition=ev.target.value;$('#leaderboard-body').innerHTML=renderLeaderboard();}});
-  document.addEventListener('input',ev=>{if(ev.target?.id==='who-search'){publicAttendanceSearch=ev.target.value;const ul=$('#who-players');if(ul)ul.innerHTML=renderPublicAttendanceItems();}if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=true;attendanceActive=0;updateAttendanceSuggestions();const results=$('#attendance-results');if(results)results.scrollTop=0;}if(ev.target?.closest('.live-score-form')){const form=ev.target.closest('.live-score-form');scoreDrafts.set(form.dataset.match,{a:form.querySelector('[name=score-a]')?.value??'',b:form.querySelector('[name=score-b]')?.value??''});updateScorePreview(form);}if(ev.target?.id==='player-search'){searchText=ev.target.value;const pos=ev.target.selectionStart;$('#admin-body').innerHTML=renderAdmin();const restored=$('#player-search');restored?.focus();if(pos!==null)restored?.setSelectionRange(pos,pos);}});
+  document.addEventListener('change',async ev=>{
+    if(ev.target?.id==='bulk-screenshot'){await bulkImportScreenshot(ev.target.files?.[0]);ev.target.value='';return;}
+    if(ev.target?.classList?.contains('bulk-select')){const row=bulkRegistrationRows[Number(ev.target.dataset.row)];if(row){row.selected=ev.target.checked;renderBulkRegistrationRows();}return;}
+    if(ev.target?.classList?.contains('bulk-choice')){
+      const row=bulkRegistrationRows[Number(ev.target.dataset.row)];if(row){row.selectedId=ev.target.value||null;row.manual=Boolean(row.selectedId);row.status=row.manual?'manual':'unmatched';row.selected=false;renderBulkRegistrationRows();}return;
+    }
+    if(ev.target?.closest('#create-form'))updateCreateSessionSummary();if(ev.target?.id==='team-naming-mode'){if(!adminGranted||!pub?.event)return;const mode=ev.target.value;ev.target.disabled=true;await act(()=>api.setTeamNamingMode(pub.event.id,mode),mode==='funny'?'Funny volleyball team names enabled for everyone.':'Numbered teams enabled: Blue 1–3, Red 4–6.');return;}if(ev.target?.id==='score-target-select'){if(!adminGranted||pub?.event?.status!=='open')return;const target=Number(ev.target.value);ev.target.disabled=true;await act(()=>api.setTargetScore(pub.event.id,target),`Target set to ${target}, win by 2.`);return;}if(ev.target?.id==='show-player-positions-toggle'){if(!adminGranted||!pub?.event||admin?.position_balance!==true)return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setShowPlayerPositions(pub.event.id,enabled),enabled?'Positions now shown on Live Courts and kiosk.':'Positions hidden on Live Courts and kiosk.');return;}if(['ignore-mmr-toggle','checkin-ignore-mmr-toggle'].includes(ev.target?.id)){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setIgnoreMmr(pub.event.id,enabled),enabled?'MMR ignored for team creation; results still affect ratings.':'MMR tie-breaker restored; roles, gender and teammates still take priority.');return;}if(ev.target?.id==='gender-balance-toggle'){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setGenderBalance(pub.event.id,enabled),enabled?'Women balancing enabled for the next round.':'Women balancing disabled.');return;}if(ev.target?.id==='position-balance-toggle'){if(!adminGranted||pub?.event?.status!=='open')return;const enabled=ev.target.checked;ev.target.disabled=true;await act(()=>api.setPositionBalance(pub.event.id,enabled),enabled?'Position-aware sorting enabled.':'Position-aware sorting disabled.');return;}if(ev.target?.id==='add-tier'){const custom=ev.target.value==='custom',area=$('#new-player-custom-mmr'),input=$('#add-custom-mmr');if(area&&input){area.hidden=!custom;input.disabled=!custom;input.required=custom;}}if(ev.target?.classList?.contains('tier-preset')&&ev.target.value){ev.target.closest('.profile-controls').querySelector('.profile-mmr').value=ev.target.value;}if(ev.target?.id==='leaderboard-filter'&&adminGranted){leaderboardPosition=ev.target.value;$('#leaderboard-body').innerHTML=renderLeaderboard();}});
+  document.addEventListener('input',ev=>{if(ev.target?.id==='bulk-registration-text'){bulkRegistrationText=ev.target.value;return;}if(ev.target?.id==='who-search'){publicAttendanceSearch=ev.target.value;const ul=$('#who-players');if(ul)ul.innerHTML=renderPublicAttendanceItems();}if(ev.target?.id==='attendance-search'){attendanceSearch=ev.target.value;attendanceDropdownOpen=true;attendanceActive=0;updateAttendanceSuggestions();const results=$('#attendance-results');if(results)results.scrollTop=0;}if(ev.target?.closest('.live-score-form')){const form=ev.target.closest('.live-score-form');scoreDrafts.set(form.dataset.match,{a:form.querySelector('[name=score-a]')?.value??'',b:form.querySelector('[name=score-b]')?.value??''});updateScorePreview(form);}if(ev.target?.id==='player-search'){searchText=ev.target.value;const pos=ev.target.selectionStart;$('#admin-body').innerHTML=renderAdmin();const restored=$('#player-search');restored?.focus();if(pos!==null)restored?.setSelectionRange(pos,pos);}});
   document.addEventListener('keydown',ev=>{
     if(ev.target?.id!=='attendance-search')return;
     if(ev.key==='Escape'){attendanceDropdownOpen=false;updateAttendanceSuggestions();return;}
